@@ -2,12 +2,11 @@
 #define DISPLAY_H
 
 #include <Arduino.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include "TFTM2.25-1.h" // Include the new driver header
 #include "config.h"
 
 
-extern Adafruit_SSD1306 display;
+extern ST7789 display;
 extern bool wifiOn;
 
 void setupDisplay();
@@ -22,5 +21,8 @@ void oledShowWeight(uint16_t weight);
 void oledShowMessage(const String &message, uint8_t size = 2);
 void oledShowTopRow();
 void oledShowIcon(const char* icon);
+
+// New function for filament display
+void updateFilamentDisplay();
 
 #endif

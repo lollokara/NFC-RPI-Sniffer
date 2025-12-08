@@ -6,14 +6,14 @@
 //#define PN532_MOSI  23
 //#define PN532_SS    5
 //#define PN532_MISO  19
-const uint8_t PN532_IRQ = 32;
-const uint8_t PN532_RESET = 33;
+const uint8_t PN532_IRQ = 9;  // RX
+const uint8_t PN532_RESET = 8; // TX
 // ***** PN532
 
 // ***** HX711 (Waage)
 // HX711 circuit wiring
-const uint8_t LOADCELL_DOUT_PIN = 16; //16;
-const uint8_t LOADCELL_SCK_PIN = 17; //17;
+const uint8_t LOADCELL_DOUT_PIN = 6;
+const uint8_t LOADCELL_SCK_PIN = 7;
 const uint8_t calVal_eepromAdress = 0;
 const uint16_t SCALE_LEVEL_WEIGHT = 500;
 // ***** HX711
@@ -30,6 +30,12 @@ const uint8_t OLED_TOP_END = 16;
 const uint8_t OLED_DATA_START = 17;
 const uint8_t OLED_DATA_END = SCREEN_HEIGHT;
 
+const uint8_t TFT_CS = 3;
+const uint8_t TFT_DC = 1;
+const uint8_t TFT_RST = 0;
+const uint8_t TFT_SCK = 10;
+const uint8_t TFT_MOSI = 2;
+const uint8_t TFT_BLK = 4;
 // ***** Display
 
 // ***** Webserver

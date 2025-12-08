@@ -8,7 +8,8 @@
  #include "WProgram.h"
 #endif
 
-#define swap(a, b) { int16_t t = a; a = b; b = t; }
+// Renamed swap to ergfx_swap to avoid conflict with std::swap
+#define ergfx_swap(a, b) { int16_t t = a; a = b; b = t; }
 
 class ERGFX : public Print {
 

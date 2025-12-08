@@ -37,6 +37,14 @@
 #define DISPLAY_UPDATE_INTERVAL             1000U
 #define SPOOLMAN_HEALTHCHECK_INTERVAL       60000U
 
+// TFT Display Pins
+extern const uint8_t TFT_CS;
+extern const uint8_t TFT_DC;
+extern const uint8_t TFT_RST;
+extern const uint8_t TFT_SCK;
+extern const uint8_t TFT_MOSI;
+extern const uint8_t TFT_BLK;
+
 extern const uint8_t PN532_IRQ;
 extern const uint8_t PN532_RESET;
 
