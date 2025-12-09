@@ -1893,6 +1893,7 @@ bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
 void scanRfidTask(void * parameter) {
   Serial.println("RFID Task gestartet");
   for(;;) {
+    unsigned long start = millis();
     // Regular watchdog reset
     esp_task_wdt_reset();
     yield();
@@ -2072,6 +2073,11 @@ void scanRfidTask(void * parameter) {
       }
     }
     yield();
+
+    unsigned long duration = millis() - start;
+    if (duration > 50) {
+      Serial.printf("[PERF_DEBUG] RfidReaderTask took %lu ms\n", duration);
+    }
   }
 }
 

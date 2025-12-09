@@ -607,6 +607,7 @@ void reconnect() {
 void mqtt_loop(void * parameter) {
     Serial.println("Bambu MQTT Task gestartet");
     for(;;) {
+        unsigned long start = millis();
         if (pauseBambuMqttTask) {
             vTaskDelay(10000);
         }
@@ -621,6 +622,11 @@ void mqtt_loop(void * parameter) {
         yield();
         esp_task_wdt_reset();
         vTaskDelay(100);
+
+        unsigned long duration = millis() - start;
+        if (duration > 150) { // Default delay is 100ms, so complain if > 150ms
+             Serial.printf("[PERF_DEBUG] BambuMqttTask took %lu ms\n", duration);
+        }
     }
 }
 

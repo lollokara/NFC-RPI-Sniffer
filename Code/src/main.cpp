@@ -107,7 +107,8 @@ const unsigned long debounceDelay = 500; // 500 ms debounce delay
 
 // ##### PROGRAM START #####
 void loop() {
-  unsigned long currentMillis = millis();
+  unsigned long start = millis();
+  unsigned long currentMillis = start;
 
   // Überprüfe den Status des Touch Sensors
   if (touchSensorConnected && digitalRead(TTP223_PIN) == HIGH && currentMillis - lastButtonPress > debounceDelay) 
@@ -274,4 +275,9 @@ void loop() {
   }
   
   esp_task_wdt_reset();
+
+  unsigned long duration = millis() - start;
+  if (duration > 50) {
+      Serial.printf("[PERF_DEBUG] Main Loop took %lu ms\n", duration);
+  }
 }
