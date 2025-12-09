@@ -1,5 +1,6 @@
 #include "nfc.h"
 #include <Arduino.h>
+#include <Wire.h>
 #include <Adafruit_PN532.h>
 #include <ArduinoJson.h>
 #include "config.h"
@@ -2083,6 +2084,12 @@ void scanRfidTask(void * parameter) {
 
 void startNfc() {
   oledShowProgressBar(5, 7, DISPLAY_BOOT_TEXT, "NFC init");
+
+  // Explicitly initialize I2C with correct pins and timeout to prevent system hangs
+  Wire.setPins(8, 9);
+  Wire.begin();
+  Wire.setTimeOut(1000); // 1000ms timeout for I2C to prevent blocking
+
   nfc.begin();                                           // Beginne Kommunikation mit RFID Leser
   delay(1000);
   unsigned long versiondata = nfc.getFirmwareVersion();  // Lese Versionsnummer der Firmware aus
