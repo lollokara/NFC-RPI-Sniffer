@@ -27,8 +27,8 @@
 
 #define OLED_RESET                          -1      // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS                      0x3CU   // See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
-#define SCREEN_WIDTH                        128U
-#define SCREEN_HEIGHT                       64U
+#define SCREEN_WIDTH                        284U
+#define SCREEN_HEIGHT                       76U
 #define SCREEN_TOP_BAR_HEIGHT               16U
 #define SCREEN_PROGRESS_BAR_HEIGHT          12U
 #define DISPLAY_BOOT_TEXT                   "FilaMan"
