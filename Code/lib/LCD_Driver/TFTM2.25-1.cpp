@@ -70,32 +70,40 @@ void ST7789::spiwrite(uint8_t c) {
 
 
 void ST7789::writecommand(uint8_t c) {
-  *dcport &=  ~dcpinmask;
-  //digitalWrite(_dc, LOW);
-  //*clkport &= ~clkpinmask; // clkport is a NULL pointer when hwSPI==true
-  //digitalWrite(_sclk, LOW);
-  *csport &= ~cspinmask;
-  //digitalWrite(_cs, LOW);
+  #if defined(ESP32)
+    digitalWrite(_dc, LOW);
+    digitalWrite(_cs, LOW);
+  #else
+    *dcport &=  ~dcpinmask;
+    *csport &= ~cspinmask;
+  #endif
 
   spiwrite(c);
 
-  *csport |= cspinmask;
-  //digitalWrite(_cs, HIGH);
+  #if defined(ESP32)
+    digitalWrite(_cs, HIGH);
+  #else
+    *csport |= cspinmask;
+  #endif
 }
 
 
 void ST7789::writedata(uint8_t c) {
-  *dcport |=  dcpinmask;
-  //digitalWrite(_dc, HIGH);
-  //*clkport &= ~clkpinmask; // clkport is a NULL pointer when hwSPI==true
-  //digitalWrite(_sclk, LOW);
-  *csport &= ~cspinmask;
-  //digitalWrite(_cs, LOW);
+  #if defined(ESP32)
+    digitalWrite(_dc, HIGH);
+    digitalWrite(_cs, LOW);
+  #else
+    *dcport |=  dcpinmask;
+    *csport &= ~cspinmask;
+  #endif
   
   spiwrite(c);
 
-  //digitalWrite(_cs, HIGH);
-  *csport |= cspinmask;
+  #if defined(ESP32)
+    digitalWrite(_cs, HIGH);
+  #else
+    *csport |= cspinmask;
+  #endif
 } 
 /*
 // If the SPI library has transaction support, these functions
@@ -125,10 +133,12 @@ void ST7789::begin(void) {
   pinMode(_dc, OUTPUT);
   pinMode(_cs, OUTPUT);
   
+  #if !defined(ESP32)
   csport    = portOutputRegister(digitalPinToPort(_cs));
   cspinmask = digitalPinToBitMask(_cs);
   dcport    = portOutputRegister(digitalPinToPort(_dc));
   dcpinmask = digitalPinToBitMask(_dc);
+  #endif
 
   if(hwSPI) { // Using hardware SPI
 #if defined (__AVR__)
@@ -188,7 +198,7 @@ void ST7789::begin(void) {
 	writedata(0xE0);
 
 	writecommand(0x36);
-        writedata(0x70); // Landscape (Rotation 3: MV=1, MX=1, MY=1)
+    writedata(0x70); // Landscape (Rotation 3: MV=1, MX=1, MY=1)
         
 	writecommand(0x3A);
 	writedata(0x05);
@@ -284,16 +294,22 @@ void ST7789::setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1,
 
 void ST7789::pushColor(uint16_t color) {
   //if (hwSPI) spi_begin();
-  //digitalWrite(_dc, HIGH);
-  *dcport |=  dcpinmask;
-  //digitalWrite(_cs, LOW);
-  *csport &= ~cspinmask;
+  #if defined(ESP32)
+    digitalWrite(_dc, HIGH);
+    digitalWrite(_cs, LOW);
+  #else
+    *dcport |=  dcpinmask;
+    *csport &= ~cspinmask;
+  #endif
 
   spiwrite(color >> 8);
   spiwrite(color);
 
-  *csport |= cspinmask;
-  //digitalWrite(_cs, HIGH);
+  #if defined(ESP32)
+    digitalWrite(_cs, HIGH);
+  #else
+    *csport |= cspinmask;
+  #endif
  // if (hwSPI) spi_end();
 }
 
@@ -304,16 +320,22 @@ void ST7789::drawPixel(int16_t x, int16_t y, uint16_t color) {
   //if (hwSPI) spi_begin();
   setAddrWindow(x,y,x+1,y+1);
 
-  //digitalWrite(_dc, HIGH);
-  *dcport |=  dcpinmask;
-  //digitalWrite(_cs, LOW);
-  *csport &= ~cspinmask;
+  #if defined(ESP32)
+    digitalWrite(_dc, HIGH);
+    digitalWrite(_cs, LOW);
+  #else
+    *dcport |=  dcpinmask;
+    *csport &= ~cspinmask;
+  #endif
 
   spiwrite(color >> 8);
   spiwrite(color);
 
-  *csport |= cspinmask;
-  //digitalWrite(_cs, HIGH);
+  #if defined(ESP32)
+    digitalWrite(_cs, HIGH);
+  #else
+    *csport |= cspinmask;
+  #endif
  // if (hwSPI) spi_end();
 }
 
@@ -332,17 +354,23 @@ void ST7789::drawFastVLine(int16_t x, int16_t y, int16_t h,
 
   uint8_t hi = color >> 8, lo = color;
 
-  *dcport |=  dcpinmask;
-  //digitalWrite(_dc, HIGH);
-  *csport &= ~cspinmask;
-  //digitalWrite(_cs, LOW);
+  #if defined(ESP32)
+    digitalWrite(_dc, HIGH);
+    digitalWrite(_cs, LOW);
+  #else
+    *dcport |=  dcpinmask;
+    *csport &= ~cspinmask;
+  #endif
 
   while (h--) {
     spiwrite(hi);
     spiwrite(lo);
   }
-  *csport |= cspinmask;
-  //digitalWrite(_cs, HIGH);
+  #if defined(ESP32)
+    digitalWrite(_cs, HIGH);
+  #else
+    *csport |= cspinmask;
+  #endif
  // if (hwSPI) spi_end();
 }
 
@@ -357,16 +385,22 @@ void ST7789::drawFastHLine(int16_t x, int16_t y, int16_t w,
   setAddrWindow(x, y, x+w-1, y);
 
   uint8_t hi = color >> 8, lo = color;
-  *dcport |=  dcpinmask;
-  *csport &= ~cspinmask;
-  //digitalWrite(_dc, HIGH);
-  //digitalWrite(_cs, LOW);
+  #if defined(ESP32)
+    digitalWrite(_dc, HIGH);
+    digitalWrite(_cs, LOW);
+  #else
+    *dcport |=  dcpinmask;
+    *csport &= ~cspinmask;
+  #endif
   while (w--) {
     spiwrite(hi);
     spiwrite(lo);
   }
-  *csport |= cspinmask;
-  //digitalWrite(_cs, HIGH);
+  #if defined(ESP32)
+    digitalWrite(_cs, HIGH);
+  #else
+    *csport |= cspinmask;
+  #endif
   //if (hwSPI) spi_end();
 }
 
@@ -388,10 +422,13 @@ void ST7789::fillRect(int16_t x, int16_t y, int16_t w, int16_t h,
 
   uint8_t hi = color >> 8, lo = color;
 
-  *dcport |=  dcpinmask;
-  //digitalWrite(_dc, HIGH);
-  *csport &= ~cspinmask;
-  //digitalWrite(_cs, LOW);
+  #if defined(ESP32)
+    digitalWrite(_dc, HIGH);
+    digitalWrite(_cs, LOW);
+  #else
+    *dcport |=  dcpinmask;
+    *csport &= ~cspinmask;
+  #endif
 
   for(y=h; y>0; y--) {
     for(x=w; x>0; x--) {
@@ -399,8 +436,11 @@ void ST7789::fillRect(int16_t x, int16_t y, int16_t w, int16_t h,
       spiwrite(lo);
     }
   }
-  //digitalWrite(_cs, HIGH);
-  *csport |= cspinmask;
+  #if defined(ESP32)
+    digitalWrite(_cs, HIGH);
+  #else
+    *csport |= cspinmask;
+  #endif
   //if (hwSPI) spi_end();
 }
 
@@ -417,10 +457,13 @@ void ST7789::bmp16(uint16_t x, uint16_t y, const uint8_t *pBmp, uint16_t chWidth
  // if (hwSPI) SPI.begin();
     setAddrWindow(x, y, x+chWidth-1, y+chHeight-1);
 
-  *dcport |=  dcpinmask;
-  //digitalWrite(_dc, HIGH);
-  *csport &= ~cspinmask;
-  //digitalWrite(_cs, LOW);
+  #if defined(ESP32)
+    digitalWrite(_dc, HIGH);
+    digitalWrite(_cs, LOW);
+  #else
+    *dcport |=  dcpinmask;
+    *csport &= ~cspinmask;
+  #endif
 
     for(j = 0; j < chHeight; j++) {
         for(i = 0; i < chWidth; i++) {
@@ -429,8 +472,11 @@ void ST7789::bmp16(uint16_t x, uint16_t y, const uint8_t *pBmp, uint16_t chWidth
           spiwrite(lo);
         }
     }
-   //digitalWrite(_cs, HIGH);
-  *csport |= cspinmask;
+   #if defined(ESP32)
+    digitalWrite(_cs, HIGH);
+  #else
+    *csport |= cspinmask;
+  #endif
  // if (hwSPI) SPI.end();   
 }
 
@@ -438,6 +484,4 @@ void ST7789::bmp16(uint16_t x, uint16_t y, const uint8_t *pBmp, uint16_t chWidth
 uint16_t ST7789::color565(uint8_t r, uint8_t g, uint8_t b) {
   return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
-
- 
 
