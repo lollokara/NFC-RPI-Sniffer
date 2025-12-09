@@ -139,7 +139,7 @@ void ST7789::begin(void) {
     mySPCR = SPCR;
 #elif defined(ESP32)
     SPI.begin();
-  SPI.beginTransaction(SPISettings(40000000, MSBFIRST, SPI_MODE0));  
+  SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));  
    // SPI.setClockDivider(SPI_CLOCK_DIV2); // 8 MHz (full! speed!)
    // SPI.setBitOrder(MSBFIRST);
    // SPI.setDataMode(SPI_MODE0);

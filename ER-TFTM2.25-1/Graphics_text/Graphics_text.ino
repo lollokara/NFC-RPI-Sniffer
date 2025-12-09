@@ -38,9 +38,9 @@ NOTE: test OK:ESP32-WROOM-32
 #include "TFTM2.25-1.h"
 #include "pic.c"
 
-#define TFT_RST 16
-#define TFT_DC 17
-#define TFT_CS 5
+#define TFT_RST 2
+#define TFT_DC 3
+#define TFT_CS 7
 
 
 //If using the Hardware SPI
