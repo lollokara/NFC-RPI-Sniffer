@@ -140,13 +140,24 @@ uint8_t setAutoTare(bool autoTareValue) {
 
 // Non-blocking tare function
 // Replaces standard blocking scale.tare() which loops indefinitely
+// Implements manual timeout loop to avoid relying on library implementation
 bool custom_tare(uint8_t times = 10) {
     double sum = 0;
     uint8_t successful_reads = 0;
 
     // Try to read 'times' samples with timeout for each
     for (uint8_t i = 0; i < times; i++) {
-        if (scale.wait_ready_timeout(100)) { // 100ms timeout per sample
+        bool ready = false;
+        unsigned long start = millis();
+        while(millis() - start < 150) { // 150ms manual timeout
+            if(scale.is_ready()) {
+                ready = true;
+                break;
+            }
+            yield();
+        }
+
+        if (ready) {
             sum += scale.read();
             successful_reads++;
         } else {
