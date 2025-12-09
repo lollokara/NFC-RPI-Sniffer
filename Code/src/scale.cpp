@@ -125,7 +125,7 @@ int16_t getFilteredDisplayWeight() {
 
 // ##### Funktionen für Waage #####
 uint8_t setAutoTare(bool autoTareValue) {
-  Serial.print("Set AutoTare to ");
+  Serial.print("[SCALE_DEBUG] Set AutoTare to ");
   Serial.println(autoTareValue);
   autoTare = autoTareValue;
 
@@ -139,7 +139,7 @@ uint8_t setAutoTare(bool autoTareValue) {
 }
 
 uint8_t tareScale() {
-  Serial.println("Tare scale");
+  Serial.println("[SCALE_DEBUG] Tare scale");
   scale.tare();
   resetWeightFilter();
   
@@ -148,7 +148,7 @@ uint8_t tareScale() {
 
 void scale_loop(void * parameter) {
   Serial.println("++++++++++++++++++++++++++++++");
-  Serial.println("Scale Loop started");
+  Serial.println("[SCALE_DEBUG] Scale Loop started");
   Serial.println("++++++++++++++++++++++++++++++");
 
   //scaleTareRequest == true;
@@ -166,7 +166,7 @@ void scale_loop(void * parameter) {
         // Waage manuell Taren
         if (scaleTareRequest == true || (autoTare && scale_tare_counter >= 20)) 
         {
-          Serial.println("Re-Tare scale");
+          Serial.println("[SCALE_DEBUG] Re-Tare scale");
           oledShowMessage("TARE Scale");
           vTaskDelay(pdMS_TO_TICKS(1000));
           scale.tare();
@@ -178,8 +178,10 @@ void scale_loop(void * parameter) {
           weight = 0; // Reset global weight variable after tare
         }
 
+        unsigned long tStart = millis();
         // Get raw weight reading
         float rawWeight = scale.get_units();
+        unsigned long tDuration = millis() - tStart;
         
         // Process weight with stabilization
         int16_t stabilizedWeight = processWeightReading(rawWeight);
@@ -203,10 +205,20 @@ void scale_loop(void * parameter) {
         // Debug output for monitoring (can be removed in production)
         static unsigned long lastDebugTime = 0;
         if (currentTime - lastDebugTime > 2000) { // Print every 2 seconds
+          Serial.printf("[SCALE_DEBUG] Read time: %lu ms | Raw: %.2f | Stable: %d | Filtered: %.2f\n",
+                        tDuration, rawWeight, stabilizedWeight, filteredWeight);
           lastDebugTime = currentTime;
+        } else if (tDuration > 100) {
+           Serial.printf("[SCALE_DEBUG] SLOW READ! Time: %lu ms | Raw: %.2f\n", tDuration, rawWeight);
         }
         
         lastMeasurementTime = currentTime;
+      } else {
+          static unsigned long lastNotReadyTime = 0;
+          if (currentTime - lastNotReadyTime > 5000) {
+              Serial.println("[SCALE_DEBUG] Scale NOT ready in loop");
+              lastNotReadyTime = currentTime;
+          }
       }
     }
     
@@ -215,7 +227,7 @@ void scale_loop(void * parameter) {
 }
 
 void start_scale(bool touchSensorConnected) {
-  Serial.println("Prüfe Calibration Value");
+  Serial.println("[SCALE_DEBUG] Prüfe Calibration Value");
   float calibrationValue;
 
   // NVS lesen
@@ -237,21 +249,29 @@ void start_scale(bool touchSensorConnected) {
 
   preferences.end();
 
-  Serial.print("Read Scale Calibration Value ");
+  Serial.print("[SCALE_DEBUG] Read Scale Calibration Value ");
   Serial.println(calibrationValue);
 
+  Serial.printf("[SCALE_DEBUG] scale.begin(DOUT=%d, SCK=%d)\n", LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
   scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
 
-  oledShowProgressBar(6, 7, DISPLAY_BOOT_TEXT, "Serching scale");
+  oledShowProgressBar(6, 7, DISPLAY_BOOT_TEXT, "Searching scale");
   for (uint16_t i = 0; i < 3000; i++) {
     yield();
     vTaskDelay(pdMS_TO_TICKS(1));
     esp_task_wdt_reset();
   }
 
+  unsigned long startWait = millis();
   while(!scale.is_ready()) {
-    vTaskDelay(pdMS_TO_TICKS(5000));
+    if (millis() - startWait > 5000) {
+       Serial.println("[SCALE_DEBUG] Waiting for scale ready in start_scale...");
+       startWait = millis();
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+    esp_task_wdt_reset();
   }
+  Serial.println("[SCALE_DEBUG] Scale found and ready!");
 
   scale.set_scale(calibrationValue);
   //vTaskDelay(pdMS_TO_TICKS(5000));
@@ -262,7 +282,7 @@ void start_scale(bool touchSensorConnected) {
   // Display Gewicht
   oledShowWeight(0);
 
-  Serial.println("starte Scale Task");
+  Serial.println("[SCALE_DEBUG] starte Scale Task");
   BaseType_t result = xTaskCreatePinnedToCore(
     scale_loop, /* Function to implement the task */
     "ScaleLoop", /* Name of the task */
@@ -273,13 +293,14 @@ void start_scale(bool touchSensorConnected) {
     scaleTaskCore); /* Core where the task should run */
 
   if (result != pdPASS) {
-      Serial.println("Fehler beim Erstellen des ScaleLoop-Tasks");
+      Serial.println("[SCALE_DEBUG] Fehler beim Erstellen des ScaleLoop-Tasks");
   } else {
-      Serial.println("ScaleLoop-Task erfolgreich erstellt");
+      Serial.println("[SCALE_DEBUG] ScaleLoop-Task erfolgreich erstellt");
   }
 }
 
 uint8_t calibrate_scale() {
+  Serial.println("[SCALE_DEBUG] Starting calibrate_scale");
   uint8_t returnState = 0;
   float newCalibrationValue;
 
@@ -293,7 +314,7 @@ uint8_t calibrate_scale() {
   
   if (scale.wait_ready_timeout(1000))
   {
-    
+    Serial.println("[SCALE_DEBUG] Scale ready for calibration");
     scale.set_scale();
     oledShowProgressBar(0, 3, "Scale Cal.", "Empty Scale");
 
@@ -303,9 +324,10 @@ uint8_t calibrate_scale() {
       esp_task_wdt_reset();
     }
 
+    Serial.println("[SCALE_DEBUG] Taring...");
     scale.tare();
-    Serial.println("Tare done...");
-    Serial.print("Place a known weight on the scale...");
+    Serial.println("[SCALE_DEBUG] Tare done...");
+    Serial.print("[SCALE_DEBUG] Place a known weight on the scale...");
 
     oledShowProgressBar(1, 3, "Scale Cal.", "Place the weight");
 
@@ -315,15 +337,16 @@ uint8_t calibrate_scale() {
       esp_task_wdt_reset();
     }
     
+    Serial.println("[SCALE_DEBUG] Measuring...");
     float newCalibrationValue = scale.get_units(10);
-    Serial.print("Result: ");
+    Serial.print("[SCALE_DEBUG] Result: ");
     Serial.println(newCalibrationValue);
 
     newCalibrationValue = newCalibrationValue/SCALE_LEVEL_WEIGHT;
 
     if (newCalibrationValue > 0)
     {
-      Serial.print("New calibration value has been set to: ");
+      Serial.print("[SCALE_DEBUG] New calibration value has been set to: ");
       Serial.println(newCalibrationValue);
 
       // Speichern mit NVS
@@ -337,7 +360,7 @@ uint8_t calibrate_scale() {
       float verifyValue = preferences.getFloat(NVS_KEY_CALIBRATION, 0);
       preferences.end();
 
-      Serial.print("Verified stored value: ");
+      Serial.print("[SCALE_DEBUG] Verified stored value: ");
       Serial.println(verifyValue);
 
       oledShowProgressBar(2, 3, "Scale Cal.", "Remove weight");
@@ -367,7 +390,7 @@ uint8_t calibrate_scale() {
     }
     else
     {
-      Serial.println("Calibration value is invalid. Please recalibrate.");
+      Serial.println("[SCALE_DEBUG] Calibration value is invalid. Please recalibrate.");
 
       oledShowProgressBar(3, 3, "Failure", "Calibration error");
 
@@ -381,7 +404,7 @@ uint8_t calibrate_scale() {
   }
   else 
   {
-    Serial.println("HX711 not found.");
+    Serial.println("[SCALE_DEBUG] HX711 not found (timeout).");
     
     oledShowMessage("HX711 not found");
 
