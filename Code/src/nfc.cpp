@@ -2085,7 +2085,8 @@ void scanRfidTask(void * parameter) {
 
 void startNfc() {
   oledShowProgressBar(5, 7, DISPLAY_BOOT_TEXT, "NFC init");
-  Wire.begin(8, 9); // Initialize I2C with SDA=8, SCL=9
+  Wire.setPins(8, 9); // Initialize I2C with SDA=8, SCL=9
+  Wire.begin();
   nfc.begin();                                           // Beginne Kommunikation mit RFID Leser
   delay(1000);
   unsigned long versiondata = nfc.getFirmwareVersion();  // Lese Versionsnummer der Firmware aus
