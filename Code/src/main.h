@@ -5,5 +5,7 @@
 
 
 extern bool booting;
+extern int16_t lastWeight;
+extern bool mainTaskWasPaused;
 
 #endif
