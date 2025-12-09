@@ -1,6 +1,5 @@
 #include "nfc.h"
 #include <Arduino.h>
-#include <Wire.h>
 #include <Adafruit_PN532.h>
 #include <ArduinoJson.h>
 #include "config.h"
@@ -1871,9 +1870,7 @@ bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
         yield();
         
         // Use short timeout to avoid blocking
-        // Serial.println("Starting nfc.readPassiveTargetID");
         bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, uidLength, SHORT_TIMEOUT);
-        // Serial.println("Finished nfc.readPassiveTargetID");
         
         if (success) {
             Serial.printf("✓ Tag detected on attempt %d with %dms timeout\n", attempt + 1, SHORT_TIMEOUT);
@@ -2105,7 +2102,7 @@ void startNfc() {
     // This prevents us from waiting forever for a card, which is
     // the default behaviour of the PN532.
     //nfc.setPassiveActivationRetries(0x7F);
-    nfc.setPassiveActivationRetries(0x01);
+    nfc.setPassiveActivationRetries(0x02);
 
     BaseType_t result = xTaskCreatePinnedToCore(
       scanRfidTask, /* Function to implement the task */

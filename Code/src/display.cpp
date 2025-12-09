@@ -105,6 +105,7 @@ void oledShowProgressBar(const uint8_t step, const uint8_t numSteps, const char*
 }
 
 void oledShowWeight(uint16_t weight) {
+    unsigned long start = millis();
     if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
         oledcleardata();
 
@@ -120,6 +121,8 @@ void oledShowWeight(uint16_t weight) {
         updateFilamentDisplay();
         xSemaphoreGiveRecursive(displayMutex);
     }
+    unsigned long duration = millis() - start;
+    if(duration > 50) Serial.printf("[PERF_DEBUG] oledShowWeight took %lu ms\n", duration);
 }
 
 void oledShowMessage(const String &message, uint8_t size) {
