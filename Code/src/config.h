@@ -34,7 +34,7 @@
 #define DISPLAY_BOOT_TEXT                   "FilaMan"
 
 #define WIFI_CHECK_INTERVAL                 60000U
-#define DISPLAY_UPDATE_INTERVAL             1000U
+#define DISPLAY_UPDATE_INTERVAL             5000U
 #define SPOOLMAN_HEALTHCHECK_INTERVAL       60000U
 
 // TFT Display Pins
