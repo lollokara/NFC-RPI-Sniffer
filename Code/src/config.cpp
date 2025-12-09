@@ -6,8 +6,8 @@
 //#define PN532_MOSI  23
 //#define PN532_SS    5
 //#define PN532_MISO  19
-const uint8_t PN532_IRQ = 9;  // RX
-const uint8_t PN532_RESET = 8; // TX
+const uint8_t PN532_IRQ = 21;
+const uint8_t PN532_RESET = 20;
 // ***** PN532
 
 // ***** HX711 (Waage)
@@ -20,7 +20,7 @@ const uint16_t SCALE_LEVEL_WEIGHT = 500;
 
 // ***** TTP223 (Touch Sensor)
 // TTP223 circuit wiring
-const uint8_t TTP223_PIN = 25;
+const uint8_t TTP223_PIN = 5;
 // ***** TTP223
 
 
