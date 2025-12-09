@@ -81,6 +81,7 @@ int oled_center_v(const String &text) {
 void oledShowProgressBar(const uint8_t step, const uint8_t numSteps, const char* largeText, const char* statusMessage) {
     unsigned long start = millis();
     if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
+        unsigned long mutexAcquired = millis();
         // Clear data area
         oledcleardata();
 
@@ -101,10 +102,18 @@ void oledShowProgressBar(const uint8_t step, const uint8_t numSteps, const char*
 
         display.drawRect(2, barY, barWidth, barHeight, ST7789_WHITE);
         display.fillRect(4, barY + 2, progress, barHeight - 4, ST7789_WHITE);
+
+        unsigned long drawingDone = millis();
         xSemaphoreGiveRecursive(displayMutex);
+
+        if (drawingDone - mutexAcquired > 50) {
+             Serial.printf("[PERF_DEBUG] oledShowProgressBar drawing took %lu ms\n", drawingDone - mutexAcquired);
+        }
+    } else {
+        Serial.println("[PERF_DEBUG] oledShowProgressBar failed to acquire mutex");
     }
     unsigned long duration = millis() - start;
-    if(duration > 10) Serial.printf("[PERF_DEBUG] oledShowProgressBar took %lu ms\n", duration);
+    if(duration > 10) Serial.printf("[PERF_DEBUG] oledShowProgressBar total took %lu ms\n", duration);
 }
 
 void oledShowWeight(uint16_t weight) {

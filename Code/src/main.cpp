@@ -126,7 +126,10 @@ void loop() {
   // Periodic display update
   if (intervalElapsed(currentMillis, lastTopRowUpdateTime, DISPLAY_UPDATE_INTERVAL)) 
   {
+    unsigned long tStart = millis();
     oledShowTopRow();
+    unsigned long tDuration = millis() - tStart;
+    if(tDuration > 10) Serial.printf("[PERF_DEBUG] oledShowTopRow took %lu ms\n", tDuration);
   }
 
   // Periodic spoolman health check
@@ -230,8 +233,11 @@ void loop() {
       // set the current tag as processed to prevent it beeing processed again
       tagProcessed = true;
 
+      unsigned long tStart = millis();
       if (updateSpoolWeight(activeSpoolId, weight)) 
       {
+        unsigned long tDuration = millis() - tStart;
+        if(tDuration > 50) Serial.printf("[PERF_DEBUG] updateSpoolWeight took %lu ms\n", tDuration);
         weightSend = 1;
         
         // Set Bambu spool ID for auto-send if enabled
@@ -257,8 +263,11 @@ void loop() {
       // set the current tag as processed to prevent it beeing processed again
       tagProcessed = true;
 
+      unsigned long tStart = millis();
       if (updateSpoolWeight(activeSpoolId, weight)) 
       {
+        unsigned long tDuration = millis() - tStart;
+        if(tDuration > 50) Serial.printf("[PERF_DEBUG] updateSpoolWeight (write) took %lu ms\n", tDuration);
         weightSend = 1;
         Serial.println("Tag written: Weight sent to Spoolman, but NO auto-send to Bambu");
         // INTENTIONALLY do NOT set autoSetToBambuSpoolId here to prevent Bambu auto-send
@@ -272,7 +281,10 @@ void loop() {
 
     if(octoEnabled && sendOctoUpdate && spoolmanApiState == API_IDLE)
     {
+      unsigned long tStart = millis();
       updateSpoolOcto(updateOctoSpoolId);
+      unsigned long tDuration = millis() - tStart;
+      if(tDuration > 50) Serial.printf("[PERF_DEBUG] updateSpoolOcto took %lu ms\n", tDuration);
       sendOctoUpdate = false;
     }
   }

@@ -238,7 +238,10 @@ void scale_loop(void * parameter) {
         if(tDuration > 50) Serial.printf("[PERF_DEBUG] scale.get_units() took %lu ms\n", tDuration);
         
         // Process weight with stabilization
+        tStart = millis();
         int16_t stabilizedWeight = processWeightReading(rawWeight);
+        tDuration = millis() - tStart;
+        if(tDuration > 10) Serial.printf("[PERF_DEBUG] processWeightReading took %lu ms\n", tDuration);
         
         // Update global weight variable only if it changed significantly (for API actions)
         if (stabilizedWeight != weight) {
