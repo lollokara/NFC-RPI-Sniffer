@@ -138,15 +138,43 @@ uint8_t setAutoTare(bool autoTareValue) {
   return 1;
 }
 
+// Non-blocking tare function
+// Replaces standard blocking scale.tare() which loops indefinitely
+bool custom_tare(uint8_t times = 10) {
+    double sum = 0;
+    uint8_t successful_reads = 0;
+
+    // Try to read 'times' samples with timeout for each
+    for (uint8_t i = 0; i < times; i++) {
+        if (scale.wait_ready_timeout(100)) { // 100ms timeout per sample
+            sum += scale.read();
+            successful_reads++;
+        } else {
+            Serial.printf("[SCALE_DEBUG] Tare sample %d timed out\n", i);
+            // If we have enough samples, we can proceed, otherwise abort
+            if (i > times / 2) break; // If we got > 50% samples, good enough?
+        }
+        yield();
+    }
+
+    if (successful_reads > 0) {
+        scale.set_offset(sum / successful_reads);
+        return true;
+    }
+
+    return false;
+}
+
 uint8_t tareScale() {
   Serial.println("[SCALE_DEBUG] Tare scale");
-  if(scale.wait_ready_timeout(1000)) {
-      unsigned long tStart = millis();
-      scale.tare();
-      Serial.printf("[PERF_DEBUG] scale.tare() took %lu ms\n", millis() - tStart);
+  unsigned long tStart = millis();
+
+  if(custom_tare(10)) {
+      Serial.printf("[PERF_DEBUG] custom_tare() took %lu ms\n", millis() - tStart);
       resetWeightFilter();
       return 1;
   }
+
   Serial.println("[SCALE_DEBUG] Tare failed - scale not ready");
   return 0;
 }
@@ -177,12 +205,9 @@ void scale_loop(void * parameter) {
           vTaskDelay(pdMS_TO_TICKS(1000));
 
           unsigned long tStart = millis();
-          // Use a timeout-based approach if possible, or just measure it
-          // Standard tare() blocks until it gets readings.
-          // We check readiness first to minimize blocking.
-          if(scale.wait_ready_timeout(500)) {
-             scale.tare();
-             Serial.printf("[PERF_DEBUG] scale.tare() took %lu ms\n", millis() - tStart);
+          // Use custom non-blocking tare
+          if(custom_tare(10)) {
+             Serial.printf("[PERF_DEBUG] custom_tare() took %lu ms\n", millis() - tStart);
              resetWeightFilter(); // Reset filter after manual tare
           } else {
              Serial.println("[SCALE_DEBUG] Aborting tare - scale not ready");
