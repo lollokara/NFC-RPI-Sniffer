@@ -1235,6 +1235,7 @@ bool checkSpoolmanInstance() {
         Serial.print("Checking spoolman instance: ");
         Serial.println(healthUrl);
 
+        http.setTimeout(1000); // Set timeout to 1s to prevent blocking
         http.begin(healthUrl);
         int httpCode = http.GET();
 

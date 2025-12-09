@@ -1861,7 +1861,7 @@ void startWriteJsonToTag(const bool isSpoolTag, const char* payload) {
 
 // Safe tag detection with manual retry logic and short timeouts
 bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
-    const int MAX_ATTEMPTS = 3;
+    const int MAX_ATTEMPTS = 1;    // Reduced from 3 to 1 since we are in a loop
     const int SHORT_TIMEOUT = 100; // Very short timeout to prevent hanging
     
     for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -2051,7 +2051,7 @@ void scanRfidTask(void * parameter) {
         vTaskDelay(3000 / portTICK_PERIOD_MS); // Reduced from 5 seconds to 3 seconds
       } else {
         // Faster scanning when no tag or idle state
-        vTaskDelay(150 / portTICK_PERIOD_MS); // Faster scan interval
+        vTaskDelay(500 / portTICK_PERIOD_MS); // Increased from 150 to 500ms to reduce CPU load
       }
 
       // aktualisieren der Website wenn sich der Status ändert
