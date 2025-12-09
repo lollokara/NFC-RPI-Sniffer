@@ -2102,7 +2102,7 @@ void startNfc() {
     // This prevents us from waiting forever for a card, which is
     // the default behaviour of the PN532.
     //nfc.setPassiveActivationRetries(0x7F);
-    nfc.setPassiveActivationRetries(0x02);
+    //nfc.setPassiveActivationRetries(0xFF);
 
     BaseType_t result = xTaskCreatePinnedToCore(
       scanRfidTask, /* Function to implement the task */
