@@ -2068,8 +2068,8 @@ void scanRfidTask(void * parameter) {
         vTaskDelay(100 / portTICK_PERIOD_MS); // Shorter delay during write
       } else {
         // Full suspension requested
-        Serial.println("NFC Reading disabled");
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        // Serial.println("NFC Reading disabled");
+        vTaskDelay(200 / portTICK_PERIOD_MS);
       }
     }
     yield();

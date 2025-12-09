@@ -394,7 +394,7 @@ uint8_t calibrate_scale() {
 
       oledShowProgressBar(3, 3, "Failure", "Calibration error");
 
-      for (uint16_t i = 0; i < 50000; i++) {
+      for (uint16_t i = 0; i < 3000; i++) {
         yield();
         vTaskDelay(pdMS_TO_TICKS(1));
         esp_task_wdt_reset();
@@ -408,7 +408,7 @@ uint8_t calibrate_scale() {
     
     oledShowMessage("HX711 not found");
 
-    for (uint16_t i = 0; i < 30000; i++) {
+    for (uint16_t i = 0; i < 3000; i++) {
       yield();
       vTaskDelay(pdMS_TO_TICKS(1));
       esp_task_wdt_reset();
