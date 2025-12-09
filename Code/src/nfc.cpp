@@ -2085,12 +2085,15 @@ void scanRfidTask(void * parameter) {
 void startNfc() {
   oledShowProgressBar(5, 7, DISPLAY_BOOT_TEXT, "NFC init");
 
-  // Explicitly initialize I2C with correct pins and timeout to prevent system hangs
+  // Explicitly initialize I2C with correct pins
   Wire.setPins(8, 9);
   Wire.begin();
-  Wire.setTimeOut(1000); // 1000ms timeout for I2C to prevent blocking
 
   nfc.begin();                                           // Beginne Kommunikation mit RFID Leser
+
+  // Set timeout AFTER begin to ensure it persists
+  Wire.setTimeOut(1000); // 1000ms timeout for I2C to prevent blocking
+
   delay(1000);
   unsigned long versiondata = nfc.getFirmwareVersion();  // Lese Versionsnummer der Firmware aus
   if (! versiondata) {                                   // Wenn keine Antwort kommt
@@ -2104,11 +2107,11 @@ void startNfc() {
     Serial.print('.'); Serial.println((versiondata >> 8) & 0xFF, DEC);                  // 
 
     nfc.SAMConfig();
+
     // Set the max number of retry attempts to read from a card
-    // This prevents us from waiting forever for a card, which is
-    // the default behaviour of the PN532.
-    //nfc.setPassiveActivationRetries(0x7F);
-    //nfc.setPassiveActivationRetries(0xFF);
+    // 0xFF means wait forever. We set a low value to fail fast if no card is present,
+    // preventing the PN532 from blocking I2C while scanning.
+    nfc.setPassiveActivationRetries(0x02);
 
     BaseType_t result = xTaskCreatePinnedToCore(
       scanRfidTask, /* Function to implement the task */
