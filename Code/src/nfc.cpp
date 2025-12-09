@@ -19,7 +19,7 @@ bool readCompleteJsonForFastPath();
 
 //Adafruit_PN532 nfc(PN532_SCK, PN532_MISO, PN532_MOSI, PN532_SS);
 //Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
-Adafruit_PN532 nfc(255, &Serial1);
+Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
 
 TaskHandle_t RfidReaderTask;
 
@@ -2085,7 +2085,7 @@ void scanRfidTask(void * parameter) {
 
 void startNfc() {
   oledShowProgressBar(5, 7, DISPLAY_BOOT_TEXT, "NFC init");
-  Serial1.begin(115200, SERIAL_8N1, PN532_IRQ, PN532_RESET); // RX, TX
+  Wire.begin(8, 9); // Initialize I2C with SDA=8, SCL=9
   nfc.begin();                                           // Beginne Kommunikation mit RFID Leser
   delay(1000);
   unsigned long versiondata = nfc.getFirmwareVersion();  // Lese Versionsnummer der Firmware aus
