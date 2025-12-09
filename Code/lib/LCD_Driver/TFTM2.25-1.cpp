@@ -125,7 +125,7 @@ static inline void spi_end(void) {
 */
 
 void ST7789::begin(void) {
-  if (_rst > 0) {
+  if (_rst >= 0) {
     pinMode(_rst, OUTPUT);
     digitalWrite(_rst, LOW);
   }
@@ -149,7 +149,8 @@ void ST7789::begin(void) {
     mySPCR = SPCR;
 #elif defined(ESP32)
     // SPI.begin(); // Do not re-initialize SPI as it is done in main code with custom pins
-    SPI.beginTransaction(SPISettings(40000000, MSBFIRST, SPI_MODE0));
+    // Lowered speed to 20MHz for safety
+    SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));
 #elif defined(TEENSYDUINO)
     SPI.begin();
     SPI.setClockDivider(SPI_CLOCK_DIV2); // 8 MHz (full! speed!)
@@ -174,7 +175,7 @@ void ST7789::begin(void) {
   }
 
   // toggle RST low to reset
-  if (_rst > 0) {
+  if (_rst >= 0) {
     digitalWrite(_rst, HIGH);
     delay(5);
     digitalWrite(_rst, LOW);
