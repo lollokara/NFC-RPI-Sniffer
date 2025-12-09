@@ -1225,14 +1225,32 @@ bool checkSpoolmanExtraFields() {
     }
 }
 
+// Global backoff counter to reduce check frequency on failure
+int spoolmanCheckBackoff = 0;
+
 bool checkSpoolmanInstance() {
     HTTPClient http;
     bool returnValue = false;
+
+    // Backoff logic: if backoff counter > 0, skip check and decrement counter
+    if (spoolmanCheckBackoff > 0) {
+        spoolmanCheckBackoff--;
+        Serial.printf("Skipping spoolman healthcheck due to backoff (%d)\n", spoolmanCheckBackoff);
+        return false;
+    }
 
     // Only do the spoolman instance check if there is no active API request going on
     if(spoolmanApiState == API_IDLE){
         spoolmanApiState = API_TRANSMITTING;
         String healthUrl = spoolmanUrl + apiUrl + "/health";
+
+        // Basic validation of the URL to prevent obvious DNS failures
+        if (spoolmanUrl.length() < 7) { // "http://"
+             Serial.println("Invalid Spoolman URL, skipping check");
+             spoolmanApiState = API_IDLE;
+             spoolmanCheckBackoff = 5; // Backoff for 5 cycles
+             return false;
+        }
 
         Serial.print("Checking spoolman instance: ");
         Serial.println(healthUrl);
@@ -1263,6 +1281,7 @@ bool checkSpoolmanInstance() {
                     spoolmanApiState = API_IDLE;
                     oledShowTopRow();
                     spoolmanConnected = true;
+                    spoolmanCheckBackoff = 0; // Reset backoff on success
                     returnValue = strcmp(status, "healthy") == 0;
                 }else{
                     spoolmanConnected = false;
@@ -1275,6 +1294,9 @@ bool checkSpoolmanInstance() {
         } else {
             spoolmanConnected = false;
             Serial.println("Error contacting spoolman instance! HTTP Code: " + String(httpCode));
+            // On connection failure (e.g. DNS or timeout), set backoff
+            // SPOOLMAN_HEALTHCHECK_INTERVAL is 60s, so backoff 4 = 5 minutes wait
+            spoolmanCheckBackoff = 4;
         }
         http.end();
         spoolmanApiState = API_IDLE;

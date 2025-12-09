@@ -140,10 +140,15 @@ uint8_t setAutoTare(bool autoTareValue) {
 
 uint8_t tareScale() {
   Serial.println("[SCALE_DEBUG] Tare scale");
-  scale.tare();
-  resetWeightFilter();
-  
-  return 1;
+  if(scale.wait_ready_timeout(1000)) {
+      unsigned long tStart = millis();
+      scale.tare();
+      Serial.printf("[PERF_DEBUG] scale.tare() took %lu ms\n", millis() - tStart);
+      resetWeightFilter();
+      return 1;
+  }
+  Serial.println("[SCALE_DEBUG] Tare failed - scale not ready");
+  return 0;
 }
 
 void scale_loop(void * parameter) {
@@ -170,8 +175,19 @@ void scale_loop(void * parameter) {
           Serial.println("[SCALE_DEBUG] Re-Tare scale");
           oledShowMessage("TARE Scale");
           vTaskDelay(pdMS_TO_TICKS(1000));
-          scale.tare();
-          resetWeightFilter(); // Reset filter after manual tare
+
+          unsigned long tStart = millis();
+          // Use a timeout-based approach if possible, or just measure it
+          // Standard tare() blocks until it gets readings.
+          // We check readiness first to minimize blocking.
+          if(scale.wait_ready_timeout(500)) {
+             scale.tare();
+             Serial.printf("[PERF_DEBUG] scale.tare() took %lu ms\n", millis() - tStart);
+             resetWeightFilter(); // Reset filter after manual tare
+          } else {
+             Serial.println("[SCALE_DEBUG] Aborting tare - scale not ready");
+          }
+
           vTaskDelay(pdMS_TO_TICKS(1000));
           oledShowWeight(0);
           scaleTareRequest = false;

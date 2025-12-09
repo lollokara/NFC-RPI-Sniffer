@@ -118,7 +118,7 @@ void oledShowWeight(uint16_t weight) {
         display.print(weightStr);
 
         // Update Filament Display on the right
-        updateFilamentDisplay();
+        // updateFilamentDisplay();
         xSemaphoreGiveRecursive(displayMutex);
     }
     unsigned long duration = millis() - start;
@@ -215,51 +215,5 @@ void oledShowIcon(const char* icon) {
 }
 
 void updateFilamentDisplay() {
-    // Start drawing to the right of weight display (roughly x=100)
-    int startX = 120;
-    int startY = OLED_DATA_START + 5;
-    int boxSize = 12;
-    int gap = 4;
-    int count = 0;
-    int maxCols = (SCREEN_WIDTH - startX) / (boxSize + gap);
-
-    // Note: Mutex should be taken by the caller (oledShowWeight) or we should take it here?
-    // oledShowWeight takes it. This function is called from oledShowWeight.
-    // Recursive mutex allows re-taking. But updateFilamentDisplay is also in header, could be called externally?
-    // If called externally, we need to take it.
-    if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
-
-        // Iterate through AMS units
-        for(int i=0; i < ams_count; i++) {
-            for(int j=0; j<4; j++) {
-                // Check if tray exists
-                // Usually tray_type or tray_color is empty if no filament
-                if(ams_data[i].trays[j].id != 255 && ams_data[i].trays[j].tray_type != "") {
-                    String colorHex = ams_data[i].trays[j].tray_color;
-                    if(!colorHex.startsWith("#")) colorHex = "#" + colorHex;
-
-                    uint16_t color = hexToRGB565(colorHex);
-
-                    int x = startX + (count * (boxSize + gap));
-                    if (x + boxSize > SCREEN_WIDTH) break; // Stop if screen full horizontally
-
-                    // Draw Color Box
-                    display.fillRect(x, startY, boxSize, boxSize, color);
-                    display.drawRect(x, startY, boxSize, boxSize, ST7789_WHITE);
-
-                    // Draw Type below box (very small text? or just first letter)
-                    display.setTextSize(1);
-                    display.setTextColor(ST7789_WHITE);
-                    String type = ams_data[i].trays[j].tray_type;
-                    if(type.length() > 0) {
-                        display.setCursor(x, startY + boxSize + 2);
-                        display.print(type.substring(0, 1)); // Just first char
-                    }
-
-                    count++;
-                }
-            }
-        }
-        xSemaphoreGiveRecursive(displayMutex);
-    }
+    // Disabled as per request
 }
