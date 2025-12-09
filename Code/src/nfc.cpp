@@ -2092,7 +2092,9 @@ void scanRfidTask(void * parameter) {
 
 void startNfc() {
   oledShowProgressBar(5, 7, DISPLAY_BOOT_TEXT, "NFC init");
+  Wire.setTimeOut(50); // Set I2C timeout to 50ms to prevent long blocking
   nfc.begin();                                           // Beginne Kommunikation mit RFID Leser
+  Wire.setTimeOut(50); // Ensure timeout is set after begin as well, just in case
   delay(1000);
   unsigned long versiondata = nfc.getFirmwareVersion();  // Lese Versionsnummer der Firmware aus
   if (! versiondata) {                                   // Wenn keine Antwort kommt
