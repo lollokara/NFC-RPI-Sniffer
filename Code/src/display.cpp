@@ -14,7 +14,10 @@ bool iconToggle = false;
 
 // Helpers for color conversion
 uint16_t hexToRGB565(String hex) {
-    long number = strtol(&hex[1], NULL, 16);
+    if (hex.length() == 0) return ST7789_WHITE;
+    if (hex.charAt(0) == '#') hex = hex.substring(1);
+
+    long number = strtol(hex.c_str(), NULL, 16);
     long r = number >> 16;
     long g = (number >> 8) & 0xFF;
     long b = number & 0xFF;
@@ -30,7 +33,7 @@ void setupDisplay() {
     digitalWrite(TFT_BLK, LOW); // Pull low to enable backlight
 
     display.begin();
-    display.setRotation(0); // Adjust as needed
+    display.setRotation(3); // 1 or 3 for landscape (widescreen)
     display.fillScreen(ST7789_BLACK);
     display.setTextColor(ST7789_WHITE);
 
@@ -65,16 +68,16 @@ void oledShowProgressBar(const uint8_t step, const uint8_t numSteps, const char*
     oledcleardata();
     
     display.setTextSize(2);
-    display.setCursor(0, OLED_DATA_START + 10);
+    display.setCursor(0, OLED_DATA_START + 5);
     display.setTextColor(ST7789_WHITE);
     display.print(largeText);
     
     display.setTextSize(1);
-    display.setCursor(0, OLED_DATA_START + 40);
+    display.setCursor(0, OLED_DATA_START + 25);
     display.print(statusMessage);
 
-    int barHeight = 10;
-    int barY = OLED_DATA_START + 60;
+    int barHeight = 8;
+    int barY = OLED_DATA_START + 40;
     int barWidth = SCREEN_WIDTH - 4;
     
     int progress = ((barWidth)*step)/numSteps;
@@ -86,19 +89,15 @@ void oledShowProgressBar(const uint8_t step, const uint8_t numSteps, const char*
 void oledShowWeight(uint16_t weight) {
     oledcleardata();
     
-    // Show Weight
+    // Show Weight on the left side, big
     display.setTextSize(3);
     String weightStr = String(weight) + "g";
     
-    // Center text roughly
-    int16_t x = (SCREEN_WIDTH - (weightStr.length() * 18)) / 2;
-    if (x < 0) x = 0;
-    
-    display.setCursor(x, OLED_DATA_START + 20);
+    display.setCursor(5, OLED_DATA_START + 15);
     display.setTextColor(ST7789_WHITE);
     display.print(weightStr);
 
-    // Update Filament Display below weight
+    // Update Filament Display on the right
     updateFilamentDisplay();
 }
 
@@ -132,39 +131,39 @@ void oledShowTopRow() {
     iconToggle = !iconToggle;
 
     int iconY = 0;
-    // int iconSize = 16;
-
-    // Icons position (adjusted for 76px width)
-    // 76px is narrow. Let's stack them or put them tight.
-    // Bambu: 30, Spoolman: 48, Wifi: 60
+    int spacing = 20;
+    int startX = 60; // Start icons after version text
 
     if(!booting){
         if(bambuDisabled == false) {
              if (bambu_connected == 1) {
-                display.drawBitmap(30, iconY, bitmap_bambu_on , 16, 16, ST7789_WHITE);
+                // Green for connected
+                display.drawBitmap(startX, iconY, bitmap_bambu_on , 16, 16, ST7789_GREEN);
             } else {
                 if(iconToggle){
-                     display.drawBitmap(30, iconY, bitmap_bambu_on , 16, 16, ST7789_WHITE);
-                     display.drawLine(30, iconY+15, 46, iconY, ST7789_WHITE);
+                     display.drawBitmap(startX, iconY, bitmap_bambu_on , 16, 16, ST7789_RED);
+                     // display.drawLine(startX, iconY+15, startX+16, iconY, ST7789_RED);
                 }
             }
         }
+        startX += spacing;
 
         if (spoolmanConnected) {
-             display.drawBitmap(48, iconY, bitmap_spoolman_on , 16, 16, ST7789_WHITE);
+             display.drawBitmap(startX, iconY, bitmap_spoolman_on , 16, 16, ST7789_BLUE);
         } else {
              if(iconToggle){
-                 display.drawBitmap(48, iconY, bitmap_spoolman_on , 16, 16, ST7789_WHITE);
-                 display.drawLine(48, iconY+15, 64, iconY, ST7789_WHITE);
+                 display.drawBitmap(startX, iconY, bitmap_spoolman_on , 16, 16, ST7789_RED);
+                 // display.drawLine(startX, iconY+15, startX+16, iconY, ST7789_RED);
              }
         }
+        startX += spacing;
 
         if (wifiOn == 1) {
-             display.drawBitmap(64, iconY, wifi_on , 16, 16, ST7789_WHITE);
+             display.drawBitmap(startX, iconY, wifi_on , 16, 16, ST7789_GREEN);
         } else {
              if(iconToggle){
-                 display.drawBitmap(64, iconY, wifi_on , 16, 16, ST7789_WHITE);
-                 display.drawLine(64, iconY+15, 76, iconY+5, ST7789_WHITE); // Clip line
+                 display.drawBitmap(startX, iconY, wifi_on , 16, 16, ST7789_RED);
+                 // display.drawLine(startX, iconY+15, startX+16, iconY+5, ST7789_RED);
              }
         }
     }
@@ -183,41 +182,43 @@ void oledShowIcon(const char* icon) {
 }
 
 void updateFilamentDisplay() {
-    int startY = OLED_DATA_START + 60;
-    int lineHeight = 20;
-    
-    display.setTextSize(1);
-
-    // AMS Data
+    // Start drawing to the right of weight display (roughly x=100)
+    int startX = 120;
+    int startY = OLED_DATA_START + 5;
+    int boxSize = 12;
+    int gap = 4;
     int count = 0;
-    // Iterate through AMS units (simplified to show active ones or just list)
-    // Since screen is tall (284px), we can list filaments
+    int maxCols = (SCREEN_WIDTH - startX) / (boxSize + gap);
 
+    // Iterate through AMS units
     for(int i=0; i < ams_count; i++) {
         for(int j=0; j<4; j++) {
-            // Check if tray exists (simplified check)
-            if(ams_data[i].trays[j].id != 255) { // 255 usually means empty
+            // Check if tray exists
+            // Usually tray_type or tray_color is empty if no filament
+            if(ams_data[i].trays[j].id != 255 && ams_data[i].trays[j].tray_type != "") {
                  String colorHex = ams_data[i].trays[j].tray_color;
-                 // If colorHex starts with #, skip it? usually it comes as FF0000 etc from API, but bambu.h says String.
                  if(!colorHex.startsWith("#")) colorHex = "#" + colorHex;
 
                  uint16_t color = hexToRGB565(colorHex);
 
-                 // Draw Color Box
-                 display.fillRect(0, startY + (count * lineHeight), 10, 10, color);
-                 display.drawRect(0, startY + (count * lineHeight), 10, 10, ST7789_WHITE);
+                 int x = startX + (count * (boxSize + gap));
+                 if (x + boxSize > SCREEN_WIDTH) break; // Stop if screen full horizontally
 
-                 // Draw Type
-                 display.setCursor(15, startY + (count * lineHeight));
+                 // Draw Color Box
+                 display.fillRect(x, startY, boxSize, boxSize, color);
+                 display.drawRect(x, startY, boxSize, boxSize, ST7789_WHITE);
+
+                 // Draw Type below box (very small text? or just first letter)
+                 display.setTextSize(1);
                  display.setTextColor(ST7789_WHITE);
                  String type = ams_data[i].trays[j].tray_type;
-                 if(type.length() > 6) type = type.substring(0, 6);
-                 display.print(type);
+                 if(type.length() > 0) {
+                    display.setCursor(x, startY + boxSize + 2);
+                    display.print(type.substring(0, 1)); // Just first char
+                 }
 
                  count++;
-                 if(startY + (count * lineHeight) > SCREEN_HEIGHT) return; // Stop if screen full
             }
         }
     }
-    // Also show external spool if exists
 }
