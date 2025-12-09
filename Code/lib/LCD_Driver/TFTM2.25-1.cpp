@@ -138,12 +138,8 @@ void ST7789::begin(void) {
     SPI.setDataMode(SPI_MODE0);
     mySPCR = SPCR;
 #elif defined(ESP32)
-    SPI.begin();
-  SPI.beginTransaction(SPISettings(40000000, MSBFIRST, SPI_MODE0));  
-   // SPI.setClockDivider(SPI_CLOCK_DIV2); // 8 MHz (full! speed!)
-   // SPI.setBitOrder(MSBFIRST);
-   // SPI.setDataMode(SPI_MODE0);
-
+    // SPI.begin(); // Do not re-initialize SPI as it is done in main code with custom pins
+    SPI.beginTransaction(SPISettings(40000000, MSBFIRST, SPI_MODE0));
 #elif defined(TEENSYDUINO)
     SPI.begin();
     SPI.setClockDivider(SPI_CLOCK_DIV2); // 8 MHz (full! speed!)
@@ -177,7 +173,7 @@ void ST7789::begin(void) {
     delay(150);
   }
 
-  if (hwSPI) SPI.begin();
+  // if (hwSPI) SPI.begin(); // Removed to avoid pin reset
 
  
 	writecommand(0xB2);
@@ -192,7 +188,7 @@ void ST7789::begin(void) {
 	writedata(0xE0);
 
 	writecommand(0x36);
-        writedata(0x00);
+        writedata(0x70); // Landscape (Rotation 3: MV=1, MX=1, MY=1)
         
 	writecommand(0x3A);
 	writedata(0x05);
@@ -269,7 +265,7 @@ void ST7789::begin(void) {
 
 void ST7789::setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1,
  uint16_t y1) {
- x0+=0x52; x1+=0x52;   y0+=0x12; y1+=0x12;
+ x0+=0x12; x1+=0x12;   y0+=0x52; y1+=0x52; // Offsets swapped for Landscape
   writecommand(ST7789_CASET); // Column addr set
   writedata(x0 >> 8);
   writedata(x0);     // XSTART 
