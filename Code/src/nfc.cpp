@@ -116,11 +116,16 @@ bool robustPageRead(uint8_t page, uint8_t* buffer) {
         esp_task_wdt_reset();
         yield();
         
-        if (nfc.ntag2xx_ReadPage(page, buffer)) {
+        unsigned long start = millis();
+        bool success = nfc.ntag2xx_ReadPage(page, buffer);
+        unsigned long duration = millis() - start;
+        if(duration > 20) Serial.printf("[PERF_DEBUG] nfc.ntag2xx_ReadPage(%d) took %lu ms\n", page, duration);
+
+        if (success) {
             return true;
         }
         
-        Serial.printf("Page %d read failed, attempt %d/%d\n", page, attempt + 1, MAX_READ_ATTEMPTS);
+        Serial.printf("Page %d read failed, attempt %d/%d (took %lu ms)\n", page, attempt + 1, MAX_READ_ATTEMPTS, duration);
         
         // Try to stabilize connection between attempts
         if (attempt < MAX_READ_ATTEMPTS - 1) {
@@ -1365,6 +1370,7 @@ bool quickSpoolIdCheck(String uidString) {
     }
     
     Serial.println("=== FAST-PATH: Quick sm_id Check ===");
+    unsigned long start = millis();
     
     // Read enough pages to cover NDEF header + beginning of payload (pages 4-8 = 20 bytes)
     uint8_t ndefData[20];
@@ -1379,6 +1385,9 @@ bool quickSpoolIdCheck(String uidString) {
         }
     }
     
+    unsigned long duration = millis() - start;
+    if(duration > 50) Serial.printf("[PERF_DEBUG] Quick sm_id Check reading took %lu ms\n", duration);
+
     // Parse NDEF structure to find JSON payload start
     Serial.print("Raw NDEF data (first 20 bytes): ");
     for (int i = 0; i < 20; i++) {

@@ -79,6 +79,7 @@ int oled_center_v(const String &text) {
 
 
 void oledShowProgressBar(const uint8_t step, const uint8_t numSteps, const char* largeText, const char* statusMessage) {
+    unsigned long start = millis();
     if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
         // Clear data area
         oledcleardata();
@@ -102,6 +103,8 @@ void oledShowProgressBar(const uint8_t step, const uint8_t numSteps, const char*
         display.fillRect(4, barY + 2, progress, barHeight - 4, ST7789_WHITE);
         xSemaphoreGiveRecursive(displayMutex);
     }
+    unsigned long duration = millis() - start;
+    if(duration > 10) Serial.printf("[PERF_DEBUG] oledShowProgressBar took %lu ms\n", duration);
 }
 
 void oledShowWeight(uint16_t weight) {
@@ -126,6 +129,7 @@ void oledShowWeight(uint16_t weight) {
 }
 
 void oledShowMessage(const String &message, uint8_t size) {
+    unsigned long start = millis();
     if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
         oledcleardata();
         display.setTextSize(size);
@@ -144,6 +148,8 @@ void oledShowMessage(const String &message, uint8_t size) {
         display.print(message);
         xSemaphoreGiveRecursive(displayMutex);
     }
+    unsigned long duration = millis() - start;
+    if(duration > 10) Serial.printf("[PERF_DEBUG] oledShowMessage took %lu ms\n", duration);
 }
 
 void oledShowTopRow() {
@@ -200,6 +206,7 @@ void oledShowTopRow() {
 }
 
 void oledShowIcon(const char* icon) {
+    unsigned long start = millis();
     if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
         oledcleardata();
         // For now just print text as bitmaps are for SSD1306 and might need conversion/handling for 76x284
@@ -212,6 +219,8 @@ void oledShowIcon(const char* icon) {
         else if (strcmp(icon, "loading") == 0) display.print("Loading");
         xSemaphoreGiveRecursive(displayMutex);
     }
+    unsigned long duration = millis() - start;
+    if(duration > 10) Serial.printf("[PERF_DEBUG] oledShowIcon took %lu ms\n", duration);
 }
 
 void updateFilamentDisplay() {
