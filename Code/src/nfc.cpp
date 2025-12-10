@@ -43,6 +43,30 @@ bool robustPageRead(uint8_t page, uint8_t* buffer);
 uint16_t readTagSize();
 String optimizeJsonForFastPath(const char* payload);
 
+void recoverI2C() {
+    Serial.println("[NFC] Attempting I2C Bus Recovery...");
+    // Manually toggle SCL to release stuck slaves
+    // Pins 8 (SDA) and 9 (SCL) for ESP32-C3 SuperMini default I2C
+    int sda = 8;
+    int scl = 9;
+
+    pinMode(sda, INPUT_PULLUP); // Make sure SDA is released
+    pinMode(scl, OUTPUT);
+
+    // Toggle SCL clock 9 times
+    for (int i = 0; i < 9; i++) {
+        digitalWrite(scl, HIGH);
+        delayMicroseconds(10);
+        digitalWrite(scl, LOW);
+        delayMicroseconds(10);
+    }
+    digitalWrite(scl, HIGH); // Release SCL
+    pinMode(scl, INPUT_PULLUP);
+
+    delay(10);
+    Serial.println("[NFC] I2C Bus Recovery Sequence Complete");
+}
+
 // ##### Funktionen für RFID #####
 void payloadToJson(uint8_t *data) {
     const char* startJson = strchr((char*)data, '{');
@@ -729,741 +753,6 @@ uint8_t ntag2xx_WriteNDEF(const char *payload) {
   return 1;
 }
 
-bool decodeNdefAndReturnJson(const byte* encodedMessage, String uidString) {
-  PROFILE_FUNCTION();
-  oledShowProgressBar(1, octoEnabled?5:4, "Reading", "Decoding data");
-
-  // Debug: Print first 32 bytes of the raw data
-  Serial.println("Raw NDEF data (first 32 bytes):");
-  for (int i = 0; i < 32; i++) {
-    if (encodedMessage[i] < 0x10) Serial.print("0");
-    Serial.print(encodedMessage[i], HEX);
-    Serial.print(" ");
-    if ((i + 1) % 16 == 0) Serial.println();
-  }
-  Serial.println();
-
-  // Look for the NDEF TLV structure starting from the beginning
-  int tlvOffset = 0;
-  bool foundNdefTlv = false;
-  
-  // Search for NDEF TLV (0x03) in the first few bytes
-  for (int i = 0; i < 16; i++) {
-    if (encodedMessage[i] == 0x03) {
-      tlvOffset = i;
-      foundNdefTlv = true;
-      Serial.print("Found NDEF TLV at offset: ");
-      Serial.println(tlvOffset);
-      break;
-    }
-  }
-
-  if (!foundNdefTlv) {
-    Serial.println("No NDEF TLV found in tag data");
-    return false;
-  }
-
-  // Get the NDEF message length from TLV
-  uint16_t ndefMessageLength = 0;
-  int ndefRecordOffset = 0;
-  
-  if (encodedMessage[tlvOffset + 1] == 0xFF) {
-    // Extended length format: next 2 bytes contain the actual length
-    ndefMessageLength = (encodedMessage[tlvOffset + 2] << 8) | encodedMessage[tlvOffset + 3];
-    ndefRecordOffset = tlvOffset + 4; // Skip TLV tag + 0xFF + 2 length bytes
-    Serial.print("NDEF Message Length (extended): ");
-  } else {
-    // Standard length format: single byte contains the length
-    ndefMessageLength = encodedMessage[tlvOffset + 1];
-    ndefRecordOffset = tlvOffset + 2; // Skip TLV tag + 1 length byte
-    Serial.print("NDEF Message Length (standard): ");
-  }
-  Serial.println(ndefMessageLength);
-
-  // Get pointer to NDEF record
-  const byte* ndefRecord = &encodedMessage[ndefRecordOffset];
-  
-  // Parse NDEF record header
-  byte recordHeader = ndefRecord[0];
-  byte typeLength = ndefRecord[1];
-  
-  Serial.print("NDEF Record Header: 0x");
-  Serial.println(recordHeader, HEX);
-  Serial.print("Type Length: ");
-  Serial.println(typeLength);
-
-  // Determine payload length (can be 1 or 4 bytes depending on SR flag)
-  uint32_t payloadLength = 0;
-  byte payloadLengthBytes = 1;
-  byte payloadLengthOffset = 2;
-  
-  // Check if Short Record (SR) flag is set (bit 4)
-  if (recordHeader & 0x10) { // SR flag
-    payloadLength = ndefRecord[2];
-    payloadLengthBytes = 1;
-    payloadLengthOffset = 2;
-  } else {
-    // Long record format (4 bytes for payload length)
-    payloadLength = (ndefRecord[2] << 24) | (ndefRecord[3] << 16) | 
-                   (ndefRecord[4] << 8) | ndefRecord[5];
-    payloadLengthBytes = 4;
-    payloadLengthOffset = 2;
-  }
-
-  Serial.print("Payload Length: ");
-  Serial.println(payloadLength);
-  Serial.print("Payload Length Bytes: ");
-  Serial.println(payloadLengthBytes);
-
-  // Check for ID field (if IL flag is set)
-  byte idLength = 0;
-  if (recordHeader & 0x08) { // IL flag
-    idLength = ndefRecord[payloadLengthOffset + payloadLengthBytes];
-    Serial.print("ID Length: ");
-    Serial.println(idLength);
-  }
-
-  // Calculate offset to payload
-  byte payloadOffset = 1 + 1 + payloadLengthBytes + typeLength + idLength;
-  
-  Serial.print("Calculated payload offset: ");
-  Serial.println(payloadOffset);
-
-  // Verify we have enough data
-  if (payloadOffset + payloadLength > ndefMessageLength) {
-    Serial.println("Invalid NDEF structure - payload extends beyond message");
-    Serial.print("Payload offset + length: ");
-    Serial.print(payloadOffset + payloadLength);
-    Serial.print(", NDEF message length: ");
-    Serial.println(ndefMessageLength);
-    return false;
-  }
-
-  // Print the record type for debugging
-  Serial.print("Record Type: ");
-  for (int i = 0; i < typeLength; i++) {
-    Serial.print((char)ndefRecord[1 + 1 + payloadLengthBytes + i]);
-  }
-  Serial.println();
-
-  nfcJsonData = "";
-
-  // Extract JSON payload with validation
-  uint32_t actualJsonLength = 0;
-  for (uint32_t i = 0; i < payloadLength; i++) {
-    byte currentByte = ndefRecord[payloadOffset + i];
-    
-    // Stop at null terminator or if we find the end of JSON
-    if (currentByte == 0x00) {
-      Serial.print("Found null terminator at position: ");
-      Serial.println(i);
-      break;
-    }
-    
-    // Only add printable characters and common JSON characters
-    if (currentByte >= 32 && currentByte <= 126) {
-      nfcJsonData += (char)currentByte;
-      actualJsonLength++;
-    } else {
-      Serial.print("Skipping non-printable byte at position ");
-      Serial.print(i);
-      Serial.print(": 0x");
-      Serial.println(currentByte, HEX);
-    }
-    
-    // Check if we've reached the end of a JSON object
-    if (currentByte == '}') {
-      // Count opening and closing braces to detect complete JSON
-      int braceCount = 0;
-      for (uint32_t j = 0; j <= i; j++) {
-        if (ndefRecord[payloadOffset + j] == '{') braceCount++;
-        else if (ndefRecord[payloadOffset + j] == '}') braceCount--;
-      }
-      
-      if (braceCount == 0) {
-        Serial.print("Found complete JSON object at position: ");
-        Serial.println(i);
-        actualJsonLength = i + 1;
-        break;
-      }
-    }
-  }
-
-  Serial.print("Actual JSON length extracted: ");
-  Serial.println(actualJsonLength);
-  Serial.print("Total nfcJsonData length: ");
-  Serial.println(nfcJsonData.length());
-  Serial.println("=== DECODED JSON DATA START ===");
-  Serial.println(nfcJsonData);
-  Serial.println("=== DECODED JSON DATA END ===");
-  
-  // Check if JSON was truncated
-  if (nfcJsonData.length() < payloadLength && !nfcJsonData.endsWith("}")) {
-    Serial.println("WARNING: JSON payload appears to be truncated!");
-    Serial.print("Expected payload length: ");
-    Serial.println(payloadLength);
-    Serial.print("Actual extracted length: ");
-    Serial.println(nfcJsonData.length());
-  }
-  
-  // Trim any trailing whitespace or invalid characters
-  nfcJsonData.trim();
-
-  // JSON-Dokument verarbeiten
-  JsonDocument doc;
-  DeserializationError error = deserializeJson(doc, nfcJsonData);
-  if (error) 
-  {
-    nfcJsonData = "";
-    Serial.println("Fehler beim Verarbeiten des JSON-Dokuments");
-    Serial.print("deserializeJson() failed: ");
-    Serial.println(error.f_str());
-    return false;
-  } 
-  else 
-  {
-    // If spoolman is unavailable, there is no point in continuing
-    if(spoolmanConnected){
-      // Sende die aktualisierten AMS-Daten an alle WebSocket-Clients
-      Serial.println("JSON-Dokument erfolgreich verarbeitet");
-      Serial.println(doc.as<String>());
-      if (doc["sm_id"].is<String>() && doc["sm_id"] != "" && doc["sm_id"] != "0")
-      {
-        oledShowProgressBar(2, octoEnabled?5:4, "Spool Tag", "Weighing");
-        Serial.println("SPOOL-ID gefunden: " + doc["sm_id"].as<String>());
-        activeSpoolId = doc["sm_id"].as<String>();
-        lastSpoolId = activeSpoolId;
-      }
-      else if(doc["location"].is<String>() && doc["location"] != "")
-      {
-        Serial.println("Location Tag found!");
-        String location = doc["location"].as<String>();
-        if(lastSpoolId != ""){
-          updateSpoolLocation(lastSpoolId, location);
-        }
-        else
-        {
-          Serial.println("Location update tag scanned without scanning spool before!");
-          oledShowProgressBar(1, 1, "Failure", "Scan spool first");
-        }
-      }
-      // Brand Filament not registered to Spoolman
-      else if ((!doc["sm_id"].is<String>() || (doc["sm_id"].is<String>() && (doc["sm_id"] == "0" || doc["sm_id"] == "")))
-              && doc["b"].is<String>() && doc["an"].is<String>())
-      {
-        doc["sm_id"] = "0"; // Ensure sm_id is set to 0
-        // If no sm_id is present but the brand is Brand Filament then
-        // create a new spool, maybe brand too, in Spoolman
-        Serial.println("New Brand Filament Tag found!");
-        createBrandFilament(doc, uidString);
-      }
-      else 
-      {
-        Serial.println("Keine SPOOL-ID gefunden.");
-        activeSpoolId = "";
-        oledShowProgressBar(1, 1, "Failure", "Unkown tag");
-      }
-    }else{
-      oledShowProgressBar(octoEnabled?5:4, octoEnabled?5:4, "Failure!", "Spoolman unavailable");
-    }
-  }
-
-  doc.clear();
-
-  return true;
-}
-
-// Read complete JSON data for fast-path to enable web interface display
-bool readCompleteJsonForFastPath() {
-    Serial.println("=== FAST-PATH: Reading complete JSON for web interface ===");
-    
-    // Read tag size first
-    uint16_t tagSize = readTagSize();
-    if (tagSize == 0) {
-        Serial.println("FAST-PATH: Could not determine tag size");
-        return false;
-    }
-    
-    // Create buffer for complete data
-    uint8_t* data = (uint8_t*)malloc(tagSize);
-    if (!data) {
-        Serial.println("FAST-PATH: Could not allocate memory for complete read");
-        return false;
-    }
-    memset(data, 0, tagSize);
-    
-    // Read all pages
-    uint8_t numPages = tagSize / 4;
-    for (uint8_t i = 4; i < 4 + numPages; i++) {
-        if (!robustPageRead(i, data + (i - 4) * 4)) {
-            Serial.printf("FAST-PATH: Failed to read page %d\n", i);
-            free(data);
-            return false;
-        }
-        
-        // Check for NDEF message end
-        if (data[(i - 4) * 4] == 0xFE) {
-            Serial.println("FAST-PATH: Found NDEF message end marker");
-            break;
-        }
-        
-        yield();
-        esp_task_wdt_reset();
-        vTaskDelay(pdMS_TO_TICKS(2));
-    }
-    
-    // Decode NDEF and extract JSON
-    bool success = decodeNdefAndReturnJson(data, ""); // Empty UID string for fast-path
-    
-    free(data);
-    
-    if (success) {
-        Serial.println("✓ FAST-PATH: Complete JSON data successfully loaded");
-        Serial.print("nfcJsonData length: ");
-        Serial.println(nfcJsonData.length());
-    } else {
-        Serial.println("✗ FAST-PATH: Failed to decode complete JSON data");
-    }
-    
-    return success;
-}
-
-bool quickSpoolIdCheck(String uidString) {
-    // Fast-path: Read NDEF structure to quickly locate and check JSON payload
-    // This dramatically speeds up known spool recognition
-    
-    // CRITICAL: Do not execute during write operations!
-    if (nfcWriteInProgress) {
-        Serial.println("FAST-PATH: Skipped during write operation");
-        return false;
-    }
-    
-    Serial.println("=== FAST-PATH: Quick sm_id Check ===");
-    unsigned long start = millis();
-    
-    // Read enough pages to cover NDEF header + beginning of payload (pages 4-8 = 20 bytes)
-    uint8_t ndefData[20];
-    memset(ndefData, 0, 20);
-    
-    for (uint8_t page = 4; page < 9; page++) {
-        if (!robustPageRead(page, ndefData + (page - 4) * 4)) {
-            Serial.print("FAST-PATH: Failed to read page ");
-            Serial.print(page);
-            Serial.println(" - falling back to full read");
-            return false; // Fall back to full read if any page read fails
-        }
-    }
-    
-    unsigned long duration = millis() - start;
-    if(duration > 50) Serial.printf("[PERF_DEBUG] Quick sm_id Check reading took %lu ms\n", duration);
-
-    // Parse NDEF structure to find JSON payload start
-    Serial.print("Raw NDEF data (first 20 bytes): ");
-    for (int i = 0; i < 20; i++) {
-        if (ndefData[i] < 0x10) Serial.print("0");
-        Serial.print(ndefData[i], HEX);
-        Serial.print(" ");
-    }
-    Serial.println();
-    
-    // Look for NDEF TLV (0x03) at the beginning
-    int tlvOffset = -1;
-    for (int i = 0; i < 8; i++) {
-        if (ndefData[i] == 0x03) {
-            tlvOffset = i;
-            Serial.print("Found NDEF TLV at offset: ");
-            Serial.println(tlvOffset);
-            break;
-        }
-    }
-    
-    if (tlvOffset == -1) {
-        Serial.println("✗ FAST-PATH: No NDEF TLV found");
-        return false;
-    }
-    
-    // Parse NDEF record to find JSON payload
-    int ndefRecordStart;
-    if (ndefData[tlvOffset + 1] == 0xFF) {
-        // Extended length format
-        ndefRecordStart = tlvOffset + 4;
-    } else {
-        // Standard length format
-        ndefRecordStart = tlvOffset + 2;
-    }
-    
-    if (ndefRecordStart >= 20) {
-        Serial.println("✗ FAST-PATH: NDEF record starts beyond read data");
-        return false;
-    }
-    
-    // Parse NDEF record header
-    uint8_t recordHeader = ndefData[ndefRecordStart];
-    uint8_t typeLength = ndefData[ndefRecordStart + 1];
-    
-    // Calculate payload offset
-    uint8_t payloadLengthBytes = (recordHeader & 0x10) ? 1 : 4; // SR flag check
-    uint8_t idLength = (recordHeader & 0x08) ? ndefData[ndefRecordStart + 2 + payloadLengthBytes + typeLength] : 0; // IL flag check
-    
-    int payloadOffset = ndefRecordStart + 1 + 1 + payloadLengthBytes + typeLength + idLength;
-    
-    Serial.print("NDEF Record Header: 0x");
-    Serial.print(recordHeader, HEX);
-    Serial.print(", Type Length: ");
-    Serial.print(typeLength);
-    Serial.print(", Payload offset: ");
-    Serial.println(payloadOffset);
-    
-    // Check if payload starts within our read data
-    if (payloadOffset >= 20) {
-        Serial.println("✗ FAST-PATH: JSON payload starts beyond quick read data - need more pages");
-        
-        // Read additional pages to get to JSON payload
-        uint8_t extraData[16]; // Read 4 more pages
-        memset(extraData, 0, 16);
-        
-        for (uint8_t page = 9; page < 13; page++) {
-            if (!robustPageRead(page, extraData + (page - 9) * 4)) {
-                Serial.print("FAST-PATH: Failed to read additional page ");
-                Serial.print(page);
-                Serial.println(" - falling back to full read");
-                return false; // Fall back to full read if extended read fails
-            }
-        }
-        
-        // Combine data
-        uint8_t combinedData[36];
-        memcpy(combinedData, ndefData, 20);
-        memcpy(combinedData + 20, extraData, 16);
-        
-        // Extract JSON from combined data
-        String jsonStart = "";
-        int jsonStartPos = payloadOffset;
-        for (int i = 0; i < 36 - payloadOffset && i < 30; i++) {
-            uint8_t currentByte = combinedData[payloadOffset + i];
-            if (currentByte >= 32 && currentByte <= 126) {
-                jsonStart += (char)currentByte;
-            }
-            // Stop at first brace to get just the beginning
-            if (currentByte == '{' && i > 0) break;
-        }
-        
-        Serial.print("JSON start from extended read: ");
-        Serial.println(jsonStart);
-        
-        // Check for sm_id pattern - look for non-zero sm_id values
-        if (jsonStart.indexOf("\"sm_id\":\"") >= 0) {
-            int smIdStart = jsonStart.indexOf("\"sm_id\":\"") + 9;
-            int smIdEnd = jsonStart.indexOf("\"", smIdStart);
-            
-            if (smIdEnd > smIdStart && smIdEnd < jsonStart.length()) {
-                String quickSpoolId = jsonStart.substring(smIdStart, smIdEnd);
-                Serial.print("Found sm_id in extended read: ");
-                Serial.println(quickSpoolId);
-                
-                // Only process if sm_id is not "0" (known spool)
-                if (quickSpoolId != "0" && quickSpoolId.length() > 0) {
-                    Serial.println("✓ FAST-PATH: Known spool detected!");
-                    
-                    // Set as active spool immediately
-                    activeSpoolId = quickSpoolId;
-                    lastSpoolId = activeSpoolId;
-                    
-                    // Read complete JSON data for web interface display
-                    Serial.println("FAST-PATH: Reading complete JSON data for web interface...");
-                    if (readCompleteJsonForFastPath()) {
-                        Serial.println("✓ FAST-PATH: Complete JSON data loaded for web interface");
-                    } else {
-                        Serial.println("⚠ FAST-PATH: Could not read complete JSON, web interface may show limited data");
-                    }
-                    
-                    oledShowProgressBar(2, octoEnabled?5:4, "Known Spool", "Quick mode");
-                    Serial.println("✓ FAST-PATH SUCCESS: Known spool processed quickly");
-                    return true;
-                } else {
-                    Serial.println("✗ FAST-PATH: sm_id is 0 - new brand filament, need full read");
-                    return false;
-                }
-            }
-        }
-        
-        Serial.println("✗ FAST-PATH: No sm_id pattern in extended read");
-        return false;
-    }
-    
-    // Extract JSON payload from the available data
-    String quickJson = "";
-    for (int i = payloadOffset; i < 20 && i < payloadOffset + 15; i++) {
-        uint8_t currentByte = ndefData[i];
-        if (currentByte >= 32 && currentByte <= 126) {
-            quickJson += (char)currentByte;
-        }
-    }
-    
-    Serial.print("Quick JSON data: ");
-    Serial.println(quickJson);
-    
-    // Look for sm_id pattern in the beginning of JSON - check for known vs new spools
-    if (quickJson.indexOf("\"sm_id\":\"") >= 0) {
-        Serial.println("✓ FAST-PATH: sm_id field found");
-        
-        // Extract sm_id from quick data
-        int smIdStart = quickJson.indexOf("\"sm_id\":\"") + 9;
-        int smIdEnd = quickJson.indexOf("\"", smIdStart);
-        
-        if (smIdEnd > smIdStart && smIdEnd < quickJson.length()) {
-            String quickSpoolId = quickJson.substring(smIdStart, smIdEnd);
-            Serial.print("✓ Quick extracted sm_id: ");
-            Serial.println(quickSpoolId);
-            
-            // Only process known spools (sm_id != "0") via fast path
-            if (quickSpoolId != "0" && quickSpoolId.length() > 0) {
-                Serial.println("✓ FAST-PATH: Known spool detected!");
-                
-                // Set as active spool immediately
-                activeSpoolId = quickSpoolId;
-                lastSpoolId = activeSpoolId;
-                
-                // Read complete JSON data for web interface display
-                Serial.println("FAST-PATH: Reading complete JSON data for web interface...");
-                if (readCompleteJsonForFastPath()) {
-                    Serial.println("✓ FAST-PATH: Complete JSON data loaded for web interface");
-                } else {
-                    Serial.println("⚠ FAST-PATH: Could not read complete JSON, web interface may show limited data");
-                }
-                
-                oledShowProgressBar(2, octoEnabled?5:4, "Known Spool", "Quick mode");
-                Serial.println("✓ FAST-PATH SUCCESS: Known spool processed quickly");
-                return true;
-            } else {
-                Serial.println("✗ FAST-PATH: sm_id is 0 - new brand filament, need full read");
-                return false; // sm_id="0" means new brand filament, needs full processing
-            }
-        } else {
-            Serial.println("✗ FAST-PATH: Could not extract complete sm_id value");
-            return false; // Need full read to get complete sm_id
-        }
-    }
-    
-    // Check for other patterns that require full read
-    if (quickJson.indexOf("\"location\":\"") >= 0) {
-        Serial.println("✓ FAST-PATH: Location tag detected");
-        return false; // Need full read for location processing
-    }
-    
-    if (quickJson.indexOf("\"brand\":\"") >= 0) {
-        Serial.println("✓ FAST-PATH: Brand filament detected - may need full processing");
-        return false; // Need full read for brand filament creation
-    }
-    
-    Serial.println("✗ FAST-PATH: No recognizable pattern - falling back to full read");
-    return false; // Fall back to full tag reading
-}
-
-void writeJsonToTag(void *parameter) {
-  NfcWriteParameterType* params = (NfcWriteParameterType*)parameter;
-
-  // Gib die erstellte NDEF-Message aus
-  Serial.println("Erstelle NDEF-Message...");
-  Serial.println(params->payload);
-
-  nfcReaderState = NFC_WRITING;
-  nfcWriteInProgress = true; // Block high-level tag operations during write
-
-  // Do NOT suspend the reading task - we need NFC interface for verification
-  // Just use nfcWriteInProgress to prevent scanning and fast-path operations
-  Serial.println("NFC Write Task starting - High-level operations blocked, low-level NFC available");
-
-  //pauseBambuMqttTask = true;
-  // aktualisieren der Website wenn sich der Status ändert
-  sendNfcData();
-  vTaskDelay(100 / portTICK_PERIOD_MS);
-  
-  // Show waiting message for tag detection
-  oledShowProgressBar(0, 1, "Write Tag", "Warte auf Tag");
-  
-  // Wait 10sec for tag
-  uint8_t success = 0;
-  String uidString = "";
-  for (uint16_t i = 0; i < 20; i++) {
-    uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
-    uint8_t uidLength;
-    // yield before potentially waiting for 400ms
-    yield();
-    esp_task_wdt_reset();
-    success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 400);
-    if (success) {
-      for (uint8_t i = 0; i < uidLength; i++) {
-        //TBD: Rework to remove all the string operations
-        uidString += String(uid[i], HEX);
-        if (i < uidLength - 1) {
-            uidString += ":"; // Optional: Trennzeichen hinzufügen
-        }
-      }
-      foundNfcTag(nullptr, success);
-      break;
-    }
-
-    yield();
-    esp_task_wdt_reset();
-    vTaskDelay(pdMS_TO_TICKS(1));
-  }
-
-  if (success)
-  {
-    oledShowProgressBar(1, 3, "Write Tag", "Writing");
-
-    // Schreibe die NDEF-Message auf den Tag
-    success = ntag2xx_WriteNDEF(params->payload);
-    if (success) 
-    {
-        Serial.println("NDEF-Message erfolgreich auf den Tag geschrieben");
-        //oledShowMessage("NFC-Tag written");
-        //vTaskDelay(1000 / portTICK_PERIOD_MS);
-        nfcReaderState = NFC_WRITE_SUCCESS;
-        // aktualisieren der Website wenn sich der Status ändert
-        sendNfcData();
-        pauseBambuMqttTask = false;
-        
-        if(params->tagType){
-          // TBD: should this be simplified?
-          if (updateSpoolTagId(uidString, params->payload) && params->tagType) {
-            // Check if weight is over 20g and send to Spoolman
-            if (weight > 20) {
-              Serial.println("Tag successfully written and weight > 20g - sending weight to Spoolman");
-              
-              // Extract spool ID from payload for weight update
-              JsonDocument payloadDoc;
-              DeserializationError error = deserializeJson(payloadDoc, params->payload);
-              
-              if (!error && payloadDoc["sm_id"].is<String>()) {
-                String spoolId = payloadDoc["sm_id"].as<String>();
-                if (spoolId != "") {
-                  Serial.printf("Updating spool %s with weight %dg\n", spoolId.c_str(), weight);
-                  updateSpoolWeight(spoolId, weight);
-                } else {
-                  Serial.println("No valid spool ID found for weight update");
-                }
-              } else {
-                Serial.println("Error parsing payload for spool ID extraction");
-              }
-              
-              payloadDoc.clear();
-            } else {
-              Serial.printf("Weight %dg is not above 20g threshold - skipping weight update\n", weight);
-            }
-          }else{
-            // Potentially handle errors
-          }
-        }else{
-          oledShowProgressBar(1, 1, "Write Tag", "Done!");
-        }
-        
-        // CRITICAL: Properly stabilize NFC interface after write operation
-        Serial.println();
-        Serial.println("=== POST-WRITE NFC STABILIZATION ===");
-        
-        // Wait for tag operations to complete
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        
-        // Test tag presence and remove detection
-        uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };
-        uint8_t uidLength;
-        int tagRemovalChecks = 0;
-        
-        Serial.println("Warte bis Tag entfernt wird...");
-        
-        // Monitor tag presence
-        while (tagRemovalChecks < 10) {
-          yield();
-          esp_task_wdt_reset();
-          
-          bool tagPresent = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 500);
-          
-          if (!tagPresent) {
-            Serial.println("✓ Tag wurde entfernt - NFC bereit für nächsten Scan");
-            break;
-          }
-          
-          tagRemovalChecks++;
-          Serial.print("Tag noch vorhanden (");
-          Serial.print(tagRemovalChecks);
-          Serial.println("/10)");
-          
-          vTaskDelay(500 / portTICK_PERIOD_MS);
-        }
-        
-        if (tagRemovalChecks >= 10) {
-          Serial.println("WARNUNG: Tag wurde nicht entfernt - fahre trotzdem fort");
-        }
-        
-        // Additional interface stabilization before resuming normal operations
-        Serial.println("Stabilisiere NFC-Interface für normale Operationen...");
-        vTaskDelay(200 / portTICK_PERIOD_MS);
-        
-        // Test if interface is ready for normal scanning
-        uint8_t interfaceTestBuffer[4];
-        bool interfaceReady = false;
-        
-        for (int testAttempt = 0; testAttempt < 3; testAttempt++) {
-          // Try a simple interface operation (without requiring tag presence)
-          Serial.print("Interface readiness test ");
-          Serial.print(testAttempt + 1);
-          Serial.print("/3... ");
-          
-          // Use a safe read operation that doesn't depend on tag presence
-          // This tests if the PN532 chip itself is responsive
-          uint32_t versiondata = nfc.getFirmwareVersion();
-          if (versiondata != 0) {
-            Serial.println("✓");
-            interfaceReady = true;
-            break;
-          } else {
-            Serial.println("❌");
-            vTaskDelay(100 / portTICK_PERIOD_MS);
-          }
-        }
-        
-        if (!interfaceReady) {
-          Serial.println("WARNUNG: NFC-Interface reagiert nicht - könnte normale Scans beeinträchtigen");
-        } else {
-          Serial.println("✓ NFC-Interface ist bereit für normale Scans");
-        }
-        
-        Serial.println("=========================================");
-        
-        vTaskResume(RfidReaderTask);
-        vTaskDelay(500 / portTICK_PERIOD_MS);        
-    } 
-    else 
-    {
-        Serial.println("Fehler beim Schreiben der NDEF-Message auf den Tag");
-        oledShowIcon("failed");
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
-        nfcReaderState = NFC_WRITE_ERROR;
-    }
-  }
-  else
-  {
-    Serial.println("Fehler: Kein Tag zu schreiben gefunden.");
-    oledShowProgressBar(1, 1, "Failure!", "No tag found");
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-    nfcReaderState = NFC_IDLE;
-  }
-  
-  sendWriteResult(nullptr, success);
-  sendNfcData();
-
-  // Only reset the write protection flag - reading task was never suspended
-  nfcWriteInProgress = false; // Re-enable high-level tag operations
-  pauseBambuMqttTask = false;
-
-  free(params->payload);
-  delete params;
-
-  vTaskDelete(NULL);
-}
-
 // Ensures sm_id is always the first key in JSON for fast-path detection
 String optimizeJsonForFastPath(const char* payload) {
     JsonDocument inputDoc;
@@ -1560,6 +849,8 @@ bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
           unsigned long duration = millis() - startNfc;
           if (duration > SHORT_TIMEOUT + 50) {
              Serial.printf("[PERF_DEBUG] nfc.readPassiveTargetID took %lu ms (timeout: %d ms)\n", duration, SHORT_TIMEOUT);
+             // If timeout exceeded significantly, likely bus issue
+             recoverI2C();
           }
         }
         // unsigned long duration = millis() - start;
@@ -1586,7 +877,8 @@ bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
 void scanRfidTask(void * parameter) {
   Serial.println("RFID Task gestartet");
   for(;;) {
-    Wire.setTimeOut(20); // Force short timeout on every iteration to prevent blocking
+    Wire.setTimeOut(50); // Set reasonable timeout in loop
+
     PROFILE_SCOPE("scanRfidTask Loop");
     // unsigned long start = millis();
     // Regular watchdog reset
@@ -1788,15 +1080,19 @@ void scanRfidTask(void * parameter) {
 }
 
 void startNfc() {
+  recoverI2C(); // Recover I2C bus before init
   oledShowProgressBar(5, 7, DISPLAY_BOOT_TEXT, "NFC init");
 
   // Explicitly initialize I2C pins for ESP32-C3 SuperMini
-  // Note: On ESP32-C3 SuperMini, using Wire.begin(8, 9) is preferred over setPins+begin
+  // Use setPins before begin
+  Wire.setPins(8, 9);
   Wire.begin(8, 9);
 
-  Wire.setTimeOut(50); // Set I2C timeout to 50ms to prevent long blocking
+  Wire.setTimeOut(50); // Set I2C timeout
+  Wire.setClock(100000); // Lower clock speed for stability (100kHz)
+
   nfc.begin();                                           // Beginne Kommunikation mit RFID Leser
-  Wire.setTimeOut(50); // Ensure timeout is set after begin as well, just in case
+  // Wire.setTimeOut(50); // Redundant if already set, but okay
   delay(1000);
   unsigned long versiondata = nfc.getFirmwareVersion();  // Lese Versionsnummer der Firmware aus
   if (! versiondata) {                                   // Wenn keine Antwort kommt
@@ -1810,8 +1106,8 @@ void startNfc() {
     Serial.print('.'); Serial.println((versiondata >> 8) & 0xFF, DEC);                  // 
 
     nfc.SAMConfig();
-    // Explicitly set 400kHz I2C clock to improve read performance
-    Wire.setClock(400000);
+    // Do NOT set 400kHz, keep 100kHz
+    // Wire.setClock(400000);
 
     // Set the max number of retry attempts to read from a card
     // This prevents us from waiting forever for a card, which is
