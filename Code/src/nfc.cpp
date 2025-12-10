@@ -2145,8 +2145,9 @@ void startNfc() {
     // Set the max number of retry attempts to read from a card
     // This prevents us from waiting forever for a card, which is
     // the default behaviour of the PN532.
-    //nfc.setPassiveActivationRetries(0x7F);
-    //nfc.setPassiveActivationRetries(0xFF);
+    // 0xFF means 255 tries. At ~100ms per try, that's ~25 seconds of blocking!
+    // Set to 0x02 to limit blocking time.
+    nfc.setPassiveActivationRetries(0x02);
 
     BaseType_t result = xTaskCreatePinnedToCore(
       scanRfidTask, /* Function to implement the task */
