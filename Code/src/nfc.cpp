@@ -137,7 +137,9 @@ bool robustPageRead(uint8_t page, uint8_t* buffer) {
             // Re-verify tag presence with quick check
             uint8_t uid[7];
             uint8_t uidLength;
+            unsigned long startCheck = millis();
             if (!nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 100)) {
+                Serial.printf("[PERF_DEBUG] Tag lost check took %lu ms\n", millis() - startCheck);
                 Serial.println("Tag lost during read operation");
                 return false;
             }
@@ -1549,7 +1551,12 @@ bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
         bool success;
         {
           PROFILE_SCOPE("nfc.readPassiveTargetID");
+          unsigned long startNfc = millis();
           success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, uidLength, SHORT_TIMEOUT);
+          unsigned long duration = millis() - startNfc;
+          if (duration > SHORT_TIMEOUT + 50) {
+             Serial.printf("[PERF_DEBUG] nfc.readPassiveTargetID took %lu ms (timeout: %d ms)\n", duration, SHORT_TIMEOUT);
+          }
         }
         // unsigned long duration = millis() - start;
         // if(duration > 150) Serial.printf("[PERF_DEBUG] nfc.readPassiveTargetID took %lu ms\n", duration);

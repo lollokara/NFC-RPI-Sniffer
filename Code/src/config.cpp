@@ -49,12 +49,12 @@ const char* apiUrl = "/api/v1";
 // ***** Bambu Auto Set Spool
 
 // ***** Task Prios
-uint8_t rfidTaskCore = 0; // Moved to Core 0 to prevent blocking Main Loop (Core 1)
+uint8_t rfidTaskCore = 0;
 uint8_t rfidTaskPrio = 1;
 
 uint8_t rfidWriteTaskPrio = 1;
 
-uint8_t mqttTaskCore = 1;
+uint8_t mqttTaskCore = 0;
 uint8_t mqttTaskPrio = 1;
 
 uint8_t scaleTaskCore = 0;
