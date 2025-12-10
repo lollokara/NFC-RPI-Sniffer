@@ -2123,9 +2123,17 @@ void startNfc() {
   Wire.setPins(8, 9);
   Wire.begin();
 
-  Wire.setTimeOut(50); // Set I2C timeout to 50ms to prevent long blocking
+  // Perform Hardware Reset of PN532
+  pinMode(PN532_RESET, OUTPUT);
+  digitalWrite(PN532_RESET, HIGH);
+  digitalWrite(PN532_RESET, LOW);
+  delay(10);
+  digitalWrite(PN532_RESET, HIGH);
+  delay(10); // Wait for chip to wake up
+
+  Wire.setTimeOut(200); // Set I2C timeout to 200ms to allow for clock stretching but prevent long blocking
   nfc.begin();                                           // Beginne Kommunikation mit RFID Leser
-  Wire.setTimeOut(50); // Ensure timeout is set after begin as well, just in case
+  Wire.setTimeOut(200); // Ensure timeout is set after begin as well
   delay(1000);
   unsigned long versiondata = nfc.getFirmwareVersion();  // Lese Versionsnummer der Firmware aus
   if (! versiondata) {                                   // Wenn keine Antwort kommt
@@ -2139,8 +2147,8 @@ void startNfc() {
     Serial.print('.'); Serial.println((versiondata >> 8) & 0xFF, DEC);                  // 
 
     nfc.SAMConfig();
-    // Explicitly set 400kHz I2C clock to improve read performance
-    Wire.setClock(400000);
+    // Set 100kHz I2C clock for stability on ESP32-C3
+    Wire.setClock(100000);
 
     // Set the max number of retry attempts to read from a card
     // This prevents us from waiting forever for a card, which is
