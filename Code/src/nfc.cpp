@@ -2120,8 +2120,8 @@ void startNfc() {
   oledShowProgressBar(5, 7, DISPLAY_BOOT_TEXT, "NFC init");
 
   // Explicitly initialize I2C pins for ESP32-C3 SuperMini
-  Wire.setPins(8, 9);
-  Wire.begin();
+  // Note: On ESP32-C3 SuperMini, using Wire.begin(8, 9) is preferred over setPins+begin
+  Wire.begin(8, 9);
 
   // Perform Hardware Reset of PN532
   pinMode(PN532_RESET, OUTPUT);
@@ -2154,7 +2154,7 @@ void startNfc() {
     // This prevents us from waiting forever for a card, which is
     // the default behaviour of the PN532.
     // 0xFF means 255 tries. At ~100ms per try, that's ~25 seconds of blocking!
-    // Set to 0x02 to limit blocking time.
+    // Set to 0x02 to limit blocking time to ~200ms.
     nfc.setPassiveActivationRetries(0x02);
 
     BaseType_t result = xTaskCreatePinnedToCore(
