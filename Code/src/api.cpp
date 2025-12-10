@@ -39,6 +39,7 @@ struct SendToApiParams {
 };
 
 JsonDocument fetchSingleSpoolInfo(int spoolId) {
+    PROFILE_FUNCTION();
     HTTPClient http;
     String spoolsUrl = spoolmanUrl + apiUrl + "/spool/" + spoolId;
 
@@ -108,6 +109,7 @@ JsonDocument fetchSingleSpoolInfo(int spoolId) {
 }
 
 void sendToApi(void *parameter) {
+    PROFILE_FUNCTION();
     HEAP_DEBUG_MESSAGE("sendToApi begin");
 
     // Wait until API is IDLE
@@ -1229,6 +1231,7 @@ bool checkSpoolmanExtraFields() {
 int spoolmanCheckBackoff = 0;
 
 bool checkSpoolmanInstance() {
+    PROFILE_FUNCTION();
     HTTPClient http;
     bool returnValue = false;
 

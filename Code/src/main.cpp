@@ -12,6 +12,7 @@
 #include "scale.h"
 #include "esp_task_wdt.h"
 #include "commonFS.h"
+#include "debug.h"
 
 bool mainTaskWasPaused = 0;
 uint8_t scaleTareCounter = 0;
@@ -107,6 +108,7 @@ const unsigned long debounceDelay = 500; // 500 ms debounce delay
 
 // ##### PROGRAM START #####
 void loop() {
+  PROFILE_FUNCTION();
   unsigned long start = millis();
   unsigned long currentMillis = start;
 
@@ -120,25 +122,22 @@ void loop() {
   // Überprüfe regelmäßig die WLAN-Verbindung
   if (intervalElapsed(currentMillis, lastWifiCheckTime, WIFI_CHECK_INTERVAL)) 
   {
+    PROFILE_SCOPE("checkWiFiConnection");
     checkWiFiConnection();
   }
 
   // Periodic display update
   if (intervalElapsed(currentMillis, lastTopRowUpdateTime, DISPLAY_UPDATE_INTERVAL)) 
   {
-    unsigned long tStart = millis();
+    // PROFILE_SCOPE("oledShowTopRow"); // Handled inside oledShowTopRow or keep manual if oledShowTopRow is not modified
     oledShowTopRow();
-    unsigned long tDuration = millis() - tStart;
-    if(tDuration > 10) Serial.printf("[PERF_DEBUG] oledShowTopRow took %lu ms\n", tDuration);
   }
 
   // Periodic spoolman health check
   if (intervalElapsed(currentMillis, lastSpoolmanHealcheckTime, SPOOLMAN_HEALTHCHECK_INTERVAL)) 
   {
-    unsigned long start = millis();
+    PROFILE_SCOPE("checkSpoolmanInstance");
     checkSpoolmanInstance();
-    unsigned long duration = millis() - start;
-    if(duration > 50) Serial.printf("[PERF_DEBUG] checkSpoolmanInstance took %lu ms\n", duration);
   }
 
   // Wenn Bambu auto set Spool aktiv
@@ -290,9 +289,4 @@ void loop() {
   }
   
   esp_task_wdt_reset();
-
-  unsigned long duration = millis() - start;
-  if (duration > 50) {
-      Serial.printf("[PERF_DEBUG] Main Loop took %lu ms\n", duration);
-  }
 }

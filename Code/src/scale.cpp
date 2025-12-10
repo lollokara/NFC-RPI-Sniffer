@@ -6,6 +6,7 @@
 #include "display.h"
 #include "esp_task_wdt.h"
 #include <Preferences.h>
+#include "debug.h"
 
 HX711 scale;
 
@@ -82,6 +83,7 @@ float applyLowPassFilter(float newValue) {
  * Returns stabilized weight value
  */
 int16_t processWeightReading(float rawWeight) {
+  PROFILE_FUNCTION();
   // Add to moving average buffer
   weightBuffer[bufferIndex] = rawWeight;
   bufferIndex = (bufferIndex + 1) % MOVING_AVERAGE_SIZE;
@@ -142,6 +144,7 @@ uint8_t setAutoTare(bool autoTareValue) {
 // Replaces standard blocking scale.tare() which loops indefinitely
 // Implements manual timeout loop to avoid relying on library implementation
 bool custom_tare(uint8_t times = 10) {
+    PROFILE_FUNCTION();
     double sum = 0;
     uint8_t successful_reads = 0;
 
@@ -159,7 +162,10 @@ bool custom_tare(uint8_t times = 10) {
         }
 
         if (ready) {
-            sum += scale.read();
+            {
+               PROFILE_SCOPE("scale.read");
+               sum += scale.read();
+            }
             successful_reads++;
         } else {
             Serial.printf("[SCALE_DEBUG] Tare sample %d timed out\n", i);
@@ -202,6 +208,7 @@ void scale_loop(void * parameter) {
   lastMeasurementTime = millis();
 
   for(;;) {
+    PROFILE_SCOPE("scale_loop iteration");
     unsigned long currentTime = millis();
     
     // Only measure at defined intervals to reduce noise
@@ -234,7 +241,11 @@ void scale_loop(void * parameter) {
 
         unsigned long tStart = millis();
         // Get raw weight reading
-        float rawWeight = scale.get_units();
+        float rawWeight;
+        {
+          PROFILE_SCOPE("scale.get_units");
+          rawWeight = scale.get_units();
+        }
         unsigned long tDuration = millis() - tStart;
         if(tDuration > 50) Serial.printf("[PERF_DEBUG] scale.get_units() took %lu ms\n", tDuration);
         

@@ -9,6 +9,7 @@
 #include "scale.h"
 #include "bambu.h"
 #include "main.h"
+#include "debug.h"
 
 //Adafruit_PN532 nfc(PN532_SCK, PN532_MISO, PN532_MOSI, PN532_SS);
 Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
@@ -114,18 +115,20 @@ bool robustPageRead(uint8_t page, uint8_t* buffer) {
     
     for (int attempt = 0; attempt < MAX_READ_ATTEMPTS; attempt++) {
         esp_task_wdt_reset();
-        yield();
+        // yield();
+        vTaskDelay(pdMS_TO_TICKS(1)); // Context switch
         
-        unsigned long start = millis();
+        PROFILE_SCOPE("nfc.ntag2xx_ReadPage");
+        // unsigned long start = millis();
         bool success = nfc.ntag2xx_ReadPage(page, buffer);
-        unsigned long duration = millis() - start;
-        if(duration > 20) Serial.printf("[PERF_DEBUG] nfc.ntag2xx_ReadPage(%d) took %lu ms\n", page, duration);
+        // unsigned long duration = millis() - start;
+        // if(duration > 20) Serial.printf("[PERF_DEBUG] nfc.ntag2xx_ReadPage(%d) took %lu ms\n", page, duration);
 
         if (success) {
             return true;
         }
         
-        Serial.printf("Page %d read failed, attempt %d/%d (took %lu ms)\n", page, attempt + 1, MAX_READ_ATTEMPTS, duration);
+        Serial.printf("Page %d read failed, attempt %d/%d\n", page, attempt + 1, MAX_READ_ATTEMPTS);
         
         // Try to stabilize connection between attempts
         if (attempt < MAX_READ_ATTEMPTS - 1) {
@@ -1062,6 +1065,7 @@ uint8_t ntag2xx_WriteNDEF(const char *payload) {
 }
 
 bool decodeNdefAndReturnJson(const byte* encodedMessage, String uidString) {
+  PROFILE_FUNCTION();
   oledShowProgressBar(1, octoEnabled?5:4, "Reading", "Decoding data");
 
   // Debug: Print first 32 bytes of the raw data
@@ -1870,19 +1874,26 @@ void startWriteJsonToTag(const bool isSpoolTag, const char* payload) {
 
 // Safe tag detection with manual retry logic and short timeouts
 bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
+    PROFILE_FUNCTION();
     const int MAX_ATTEMPTS = 1;    // Reduced from 3 to 1 since we are in a loop
     const int SHORT_TIMEOUT = 100; // Very short timeout to prevent hanging
     
     for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         // Watchdog reset on each attempt
         esp_task_wdt_reset();
-        yield();
+        // yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
+
         
         // Use short timeout to avoid blocking
-        unsigned long start = millis();
-        bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, uidLength, SHORT_TIMEOUT);
-        unsigned long duration = millis() - start;
-        if(duration > 150) Serial.printf("[PERF_DEBUG] nfc.readPassiveTargetID took %lu ms\n", duration);
+        // unsigned long start = millis();
+        bool success;
+        {
+          PROFILE_SCOPE("nfc.readPassiveTargetID");
+          success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, uidLength, SHORT_TIMEOUT);
+        }
+        // unsigned long duration = millis() - start;
+        // if(duration > 150) Serial.printf("[PERF_DEBUG] nfc.readPassiveTargetID took %lu ms\n", duration);
         
         if (success) {
             Serial.printf("✓ Tag detected on attempt %d with %dms timeout\n", attempt + 1, SHORT_TIMEOUT);
@@ -1905,7 +1916,8 @@ bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
 void scanRfidTask(void * parameter) {
   Serial.println("RFID Task gestartet");
   for(;;) {
-    unsigned long start = millis();
+    PROFILE_SCOPE("scanRfidTask Loop");
+    // unsigned long start = millis();
     // Regular watchdog reset
     esp_task_wdt_reset();
     yield();
@@ -2097,10 +2109,10 @@ void scanRfidTask(void * parameter) {
     // yield(); // yield is not enough on single core if priorities are mixed
     vTaskDelay(pdMS_TO_TICKS(10)); // Force context switch to lower priority tasks
 
-    unsigned long duration = millis() - start;
-    if (duration > 50) {
-      Serial.printf("[PERF_DEBUG] RfidReaderTask took %lu ms\n", duration);
-    }
+    // unsigned long duration = millis() - start;
+    // if (duration > 50) {
+    //   Serial.printf("[PERF_DEBUG] RfidReaderTask took %lu ms\n", duration);
+    // }
   }
 }
 
