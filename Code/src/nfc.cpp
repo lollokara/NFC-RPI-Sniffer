@@ -9,6 +9,7 @@
 #include "scale.h"
 #include "bambu.h"
 #include "main.h"
+#include "debug.h"
 
 //Adafruit_PN532 nfc(PN532_SCK, PN532_MISO, PN532_MOSI, PN532_SS);
 Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET);
@@ -114,18 +115,20 @@ bool robustPageRead(uint8_t page, uint8_t* buffer) {
     
     for (int attempt = 0; attempt < MAX_READ_ATTEMPTS; attempt++) {
         esp_task_wdt_reset();
-        yield();
+        // yield();
+        vTaskDelay(pdMS_TO_TICKS(1)); // Context switch
         
-        unsigned long start = millis();
+        PROFILE_SCOPE("nfc.ntag2xx_ReadPage");
+        // unsigned long start = millis();
         bool success = nfc.ntag2xx_ReadPage(page, buffer);
-        unsigned long duration = millis() - start;
-        if(duration > 20) Serial.printf("[PERF_DEBUG] nfc.ntag2xx_ReadPage(%d) took %lu ms\n", page, duration);
+        // unsigned long duration = millis() - start;
+        // if(duration > 20) Serial.printf("[PERF_DEBUG] nfc.ntag2xx_ReadPage(%d) took %lu ms\n", page, duration);
 
         if (success) {
             return true;
         }
         
-        Serial.printf("Page %d read failed, attempt %d/%d (took %lu ms)\n", page, attempt + 1, MAX_READ_ATTEMPTS, duration);
+        Serial.printf("Page %d read failed, attempt %d/%d\n", page, attempt + 1, MAX_READ_ATTEMPTS);
         
         // Try to stabilize connection between attempts
         if (attempt < MAX_READ_ATTEMPTS - 1) {
@@ -448,347 +451,6 @@ uint8_t ntag2xx_WriteNDEF(const char *payload) {
     totalTlvSize = tlvHeaderSize + ndefRecordSize + 1; // +1 for terminator TLV
   }
 
-  Serial.print("NDEF Record Size: ");
-  Serial.println(ndefRecordSize);
-  Serial.print("Total TLV Size: ");
-  Serial.println(totalTlvSize);
-
-  // Check if the message fits in the available user data space
-  if (totalTlvSize > availableUserData) {
-    Serial.println();
-    Serial.println("!!!!!!!!!!!!!!!!!!!!!!!!");
-    Serial.println("FEHLER: Payload zu groß für diesen Tag-Typ!");
-    Serial.print("Tag-Typ: ");Serial.println(tagType);
-    Serial.print("Benötigt: ");Serial.print(totalTlvSize);Serial.println(" Bytes");
-    Serial.print("Verfügbar: ");Serial.print(availableUserData);Serial.println(" Bytes");
-    Serial.print("Überschuss: ");Serial.print(totalTlvSize - availableUserData);Serial.println(" Bytes");
-    
-    if (tagType == "NTAG213") {
-      Serial.println("EMPFEHLUNG: Verwenden Sie einen NTAG215 (504 Bytes) oder NTAG216 (888 Bytes) Tag!");
-      Serial.println("Oder kürzen Sie die Payload um mindestens " + String(totalTlvSize - availableUserData) + " Bytes.");
-    }
-    Serial.println("!!!!!!!!!!!!!!!!!!!!!!!!");
-    Serial.println();
-    
-    oledShowMessage("Tag zu klein für Payload");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    return 0;
-  }
-
-  Serial.println("✓ Payload passt in den Tag - Schreibvorgang wird fortgesetzt");
-
-  // STEP 1: NFC Interface Reset and Reinitialization
-  Serial.println();
-  Serial.println("=== SCHRITT 1: NFC-INTERFACE RESET UND NEUINITIALISIERUNG ===");
-  
-  // First, check if the NFC interface is working at all
-  Serial.println("Teste aktuellen NFC-Interface-Zustand...");
-  
-  // Try to read capability container (which worked during detection)
-  uint8_t ccTest[4];
-  bool ccReadable = nfc.ntag2xx_ReadPage(3, ccTest);
-  Serial.print("Capability Container (Seite 3) lesbar: ");
-  Serial.println(ccReadable ? "✓" : "❌");
-  
-  if (!ccReadable) {
-    Serial.println("❌ NFC-Interface ist nicht funktionsfähig - führe Reset durch");
-    
-    // Perform NFC interface reset and reinitialization
-    Serial.println("Führe NFC-Interface Reset durch...");
-    
-    // Step 1: Try to reinitialize the NFC interface completely
-    Serial.println("1. Neuinitialisierung des PN532...");
-    
-    // Reinitialize the PN532
-    nfc.begin();
-    vTaskDelay(500 / portTICK_PERIOD_MS); // Give it time to initialize
-    
-    // Check firmware version to ensure communication is working
-    uint32_t versiondata = nfc.getFirmwareVersion();
-    if (versiondata) {
-      Serial.print("PN532 Firmware Version: 0x");
-      Serial.println(versiondata, HEX);
-      Serial.println("✓ PN532 Kommunikation wiederhergestellt");
-    } else {
-      Serial.println("❌ PN532 Kommunikation fehlgeschlagen");
-      oledShowMessage("NFC Reset failed");
-      vTaskDelay(3000 / portTICK_PERIOD_MS);
-      return 0;
-    }
-    
-    // Step 2: Reconfigure SAM
-    Serial.println("2. SAM-Konfiguration...");
-    nfc.SAMConfig();
-    vTaskDelay(200 / portTICK_PERIOD_MS);
-    
-    // Step 3: Re-detect the tag
-    Serial.println("3. Tag-Wiedererkennung...");
-    uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };
-    uint8_t uidLength;
-    bool tagRedetected = false;
-    
-    for (int attempts = 0; attempts < 5; attempts++) {
-      Serial.print("Tag-Erkennungsversuch ");
-      Serial.print(attempts + 1);
-      Serial.print("/5... ");
-      
-      if (nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 1000)) {
-        Serial.println("✓");
-        tagRedetected = true;
-        break;
-      } else {
-        Serial.println("❌");
-        vTaskDelay(300 / portTICK_PERIOD_MS);
-      }
-    }
-    
-    if (!tagRedetected) {
-      Serial.println("❌ Tag konnte nach Reset nicht wiedererkannt werden");
-      oledShowMessage("Tag lost after reset");
-      vTaskDelay(3000 / portTICK_PERIOD_MS);
-      return 0;
-    }
-    
-    Serial.println("✓ Tag erfolgreich wiedererkannt");
-    
-    // Step 4: Test basic page reading
-    Serial.println("4. Test der Grundfunktionalität...");
-    vTaskDelay(200 / portTICK_PERIOD_MS); // Give interface time to stabilize
-    
-    ccReadable = nfc.ntag2xx_ReadPage(3, ccTest);
-    Serial.print("Capability Container nach Reset lesbar: ");
-    Serial.println(ccReadable ? "✓" : "❌");
-    
-    if (!ccReadable) {
-      Serial.println("❌ NFC-Interface funktioniert nach Reset immer noch nicht");
-      oledShowMessage("NFC still broken");
-      vTaskDelay(3000 / portTICK_PERIOD_MS);
-      return 0;
-    }
-    
-    Serial.println("✓ NFC-Interface erfolgreich wiederhergestellt");
-  } else {
-    Serial.println("✓ NFC-Interface ist funktionsfähig");
-  }
-  
-  // Display CC content for debugging
-  if (ccReadable) {
-    Serial.print("CC Inhalt: ");
-    for (int i = 0; i < 4; i++) {
-      if (ccTest[i] < 0x10) Serial.print("0");
-      Serial.print(ccTest[i], HEX);
-      Serial.print(" ");
-    }
-    Serial.println();
-  }
-  
-  Serial.println("=== SCHRITT 2: INTERFACE-FUNKTIONSTEST ===");
-  
-  // Test a few critical pages to ensure stable operation
-  uint8_t testData[4];
-  bool basicPagesReadable = true;
-  
-  for (uint8_t testPage = 0; testPage <= 6; testPage++) {
-    bool readable = nfc.ntag2xx_ReadPage(testPage, testData);
-    Serial.print("Seite ");
-    Serial.print(testPage);
-    Serial.print(": ");
-    if (readable) {
-      Serial.print("✓ - ");
-      for (int i = 0; i < 4; i++) {
-        if (testData[i] < 0x10) Serial.print("0");
-        Serial.print(testData[i], HEX);
-        Serial.print(" ");
-      }
-      Serial.println();
-    } else {
-      Serial.println("❌ - Nicht lesbar");
-      if (testPage >= 3 && testPage <= 6) { // Critical pages for NDEF
-        basicPagesReadable = false;
-      }
-    }
-    vTaskDelay(10 / portTICK_PERIOD_MS); // Small delay between reads
-  }
-  
-  if (!basicPagesReadable) {
-    Serial.println("❌ KRITISCHER FEHLER: Grundlegende NDEF-Seiten nicht lesbar!");
-    Serial.println("Tag oder Interface ist defekt");
-    oledShowMessage("Tag/Interface defect");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    return 0;
-  }
-  
-  Serial.println("✓ Alle kritischen Seiten sind lesbar");
-  Serial.println("===================================================");
-
-  Serial.println();
-  Serial.println("=== SCHRITT 3: SCHREIBBEREITSCHAFTSTEST ===");
-  
-  // Test write capabilities before attempting the full write
-  Serial.println("Teste Schreibfähigkeiten des Tags...");
-  
-  uint8_t testPage[4] = {0xAA, 0xBB, 0xCC, 0xDD}; // Test pattern
-  uint8_t originalPage[4]; // Store original content
-  
-  // First, read original content of test page
-  if (!nfc.ntag2xx_ReadPage(10, originalPage)) {
-    Serial.println("FEHLER: Kann Testseite nicht lesen für Backup");
-    oledShowMessage("Test page read error");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    return 0;
-  }
-  
-  Serial.print("Original Inhalt Seite 10: ");
-  for (int i = 0; i < 4; i++) {
-    if (originalPage[i] < 0x10) Serial.print("0");
-    Serial.print(originalPage[i], HEX);
-    Serial.print(" ");
-  }
-  Serial.println();
-  
-  // Perform write test
-  if (!nfc.ntag2xx_WritePage(10, testPage)) {
-    Serial.println("FEHLER: Schreibtest fehlgeschlagen!");
-    Serial.println("Tag ist möglicherweise schreibgeschützt oder defekt");
-    
-    // Additional diagnostics
-    Serial.println("=== ERWEITERTE SCHREIBTEST-DIAGNOSE ===");
-    
-    // Check if tag is still present
-    uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };
-    uint8_t uidLength;
-    bool tagStillPresent = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 1000);
-    Serial.print("Tag noch erkannt: ");
-    Serial.println(tagStillPresent ? "✓" : "❌");
-    
-    if (!tagStillPresent) {
-      Serial.println("URSACHE: Tag wurde während Schreibtest entfernt!");
-      oledShowMessage("Tag removed");
-    } else {
-      Serial.println("URSACHE: Tag ist vorhanden aber nicht beschreibbar");
-      Serial.println("Möglicherweise: Schreibschutz, Defekt, oder Interface-Problem");
-      oledShowMessage("Tag write protected?");
-    }
-    Serial.println("==========================================");
-    
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    return 0;
-  }
-  
-  // Verify test write
-  uint8_t readBack[4];
-  vTaskDelay(20 / portTICK_PERIOD_MS); // Wait for write to complete
-  
-  if (!nfc.ntag2xx_ReadPage(10, readBack)) {
-    Serial.println("FEHLER: Kann Testdaten nicht zurücklesen!");
-    oledShowMessage("Test verify failed");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    return 0;
-  }
-  
-  bool testSuccess = true;
-  for (int i = 0; i < 4; i++) {
-    if (readBack[i] != testPage[i]) {
-      testSuccess = false;
-      break;
-    }
-  }
-  
-  if (!testSuccess) {
-    Serial.println("FEHLER: Schreibtest fehlgeschlagen - Daten stimmen nicht überein!");
-    Serial.print("Geschrieben: ");
-    for (int i = 0; i < 4; i++) {
-      Serial.print(testPage[i], HEX); Serial.print(" ");
-    }
-    Serial.println();
-    Serial.print("Gelesen: ");
-    for (int i = 0; i < 4; i++) {
-      Serial.print(readBack[i], HEX); Serial.print(" ");
-    }
-    Serial.println();
-    return 0;
-  }
-  
-  // Restore original content
-  Serial.println("Stelle ursprünglichen Inhalt wieder her...");
-  if (!nfc.ntag2xx_WritePage(10, originalPage)) {
-    Serial.println("WARNUNG: Konnte ursprünglichen Inhalt nicht wiederherstellen!");
-  } else {
-    Serial.println("✓ Ursprünglicher Inhalt wiederhergestellt");
-  }
-  
-  Serial.println("✓ Schreibtest erfolgreich - Tag ist voll funktionsfähig");
-  Serial.println("======================================================");
-
-  // STEP 4: NDEF initialization with verification
-  Serial.println();
-  Serial.println("=== SCHRITT 4: NDEF-INITIALISIERUNG ===");
-  if (!initializeNdefStructure()) {
-    Serial.println("FEHLER: Konnte NDEF-Struktur nicht initialisieren!");
-    oledShowMessage("NDEF init failed");
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-    return 0;
-  }
-  
-  // Verify NDEF initialization
-  uint8_t ndefCheck[8];
-  bool ndefVerified = true;
-  for (uint8_t page = 4; page < 6; page++) {
-    if (!nfc.ntag2xx_ReadPage(page, &ndefCheck[(page-4)*4])) {
-      ndefVerified = false;
-      break;
-    }
-  }
-  
-  if (ndefVerified) {
-    Serial.print("NDEF-Header nach Initialisierung: ");
-    for (int i = 0; i < 8; i++) {
-      if (ndefCheck[i] < 0x10) Serial.print("0");
-      Serial.print(ndefCheck[i], HEX);
-      Serial.print(" ");
-    }
-    Serial.println();
-  }
-  
-  Serial.println("✓ NDEF-Struktur initialisiert und verifiziert");
-  Serial.println("==========================================");
-
-  // STEP 5: Allow interface to stabilize before major write operation
-  Serial.println();
-  Serial.println("=== SCHRITT 5: NFC-INTERFACE STABILISIERUNG ===");
-  Serial.println("Stabilisiere NFC-Interface vor Hauptschreibvorgang...");
-  
-  // Give the interface time to fully settle after NDEF initialization
-  vTaskDelay(200 / portTICK_PERIOD_MS);
-  
-  // Test interface stability with a simple read
-  uint8_t stabilityTest[4];
-  bool interfaceStable = false;
-  for (int attempts = 0; attempts < 3; attempts++) {
-    if (nfc.ntag2xx_ReadPage(4, stabilityTest)) {
-      Serial.print("Interface stability test ");
-      Serial.print(attempts + 1);
-      Serial.println("/3: ✓");
-      interfaceStable = true;
-      break;
-    } else {
-      Serial.print("Interface stability test ");
-      Serial.print(attempts + 1);
-      Serial.println("/3: ❌");
-      vTaskDelay(100 / portTICK_PERIOD_MS);
-    }
-  }
-  
-  if (!interfaceStable) {
-    Serial.println("FEHLER: NFC-Interface ist nicht stabil genug für Schreibvorgang");
-    oledShowMessage("NFC Interface unstable");
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-    return 0;
-  }
-  
-  Serial.println("✓ NFC-Interface ist stabil - Schreibvorgang kann beginnen");
-  Serial.println("=========================================================");
-
   // Allocate memory for the complete TLV structure
   uint8_t* tlvData = (uint8_t*) malloc(totalTlvSize);
   if (tlvData == NULL) {
@@ -1062,6 +724,7 @@ uint8_t ntag2xx_WriteNDEF(const char *payload) {
 }
 
 bool decodeNdefAndReturnJson(const byte* encodedMessage, String uidString) {
+  PROFILE_FUNCTION();
   oledShowProgressBar(1, octoEnabled?5:4, "Reading", "Decoding data");
 
   // Debug: Print first 32 bytes of the raw data
@@ -1870,19 +1533,26 @@ void startWriteJsonToTag(const bool isSpoolTag, const char* payload) {
 
 // Safe tag detection with manual retry logic and short timeouts
 bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
+    PROFILE_FUNCTION();
     const int MAX_ATTEMPTS = 1;    // Reduced from 3 to 1 since we are in a loop
     const int SHORT_TIMEOUT = 100; // Very short timeout to prevent hanging
     
     for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         // Watchdog reset on each attempt
         esp_task_wdt_reset();
-        yield();
+        // yield();
+        vTaskDelay(pdMS_TO_TICKS(1));
+
         
         // Use short timeout to avoid blocking
-        unsigned long start = millis();
-        bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, uidLength, SHORT_TIMEOUT);
-        unsigned long duration = millis() - start;
-        if(duration > 150) Serial.printf("[PERF_DEBUG] nfc.readPassiveTargetID took %lu ms\n", duration);
+        // unsigned long start = millis();
+        bool success;
+        {
+          PROFILE_SCOPE("nfc.readPassiveTargetID");
+          success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, uidLength, SHORT_TIMEOUT);
+        }
+        // unsigned long duration = millis() - start;
+        // if(duration > 150) Serial.printf("[PERF_DEBUG] nfc.readPassiveTargetID took %lu ms\n", duration);
         
         if (success) {
             Serial.printf("✓ Tag detected on attempt %d with %dms timeout\n", attempt + 1, SHORT_TIMEOUT);
@@ -1905,7 +1575,8 @@ bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
 void scanRfidTask(void * parameter) {
   Serial.println("RFID Task gestartet");
   for(;;) {
-    unsigned long start = millis();
+    PROFILE_SCOPE("scanRfidTask Loop");
+    // unsigned long start = millis();
     // Regular watchdog reset
     esp_task_wdt_reset();
     yield();
@@ -2094,17 +1765,23 @@ void scanRfidTask(void * parameter) {
         vTaskDelay(200 / portTICK_PERIOD_MS);
       }
     }
-    yield();
+    // yield(); // yield is not enough on single core if priorities are mixed
+    vTaskDelay(pdMS_TO_TICKS(10)); // Force context switch to lower priority tasks
 
-    unsigned long duration = millis() - start;
-    if (duration > 50) {
-      Serial.printf("[PERF_DEBUG] RfidReaderTask took %lu ms\n", duration);
-    }
+    // unsigned long duration = millis() - start;
+    // if (duration > 50) {
+    //   Serial.printf("[PERF_DEBUG] RfidReaderTask took %lu ms\n", duration);
+    // }
   }
 }
 
 void startNfc() {
   oledShowProgressBar(5, 7, DISPLAY_BOOT_TEXT, "NFC init");
+
+  // Explicitly initialize I2C pins for ESP32-C3 SuperMini
+  // Note: On ESP32-C3 SuperMini, using Wire.begin(8, 9) is preferred over setPins+begin
+  Wire.begin(8, 9);
+
   Wire.setTimeOut(50); // Set I2C timeout to 50ms to prevent long blocking
   nfc.begin();                                           // Beginne Kommunikation mit RFID Leser
   Wire.setTimeOut(50); // Ensure timeout is set after begin as well, just in case

@@ -6,6 +6,7 @@
 #include "display.h"
 #include "esp_task_wdt.h"
 #include <Preferences.h>
+#include "debug.h"
 
 HX711 scale;
 
@@ -82,6 +83,7 @@ float applyLowPassFilter(float newValue) {
  * Returns stabilized weight value
  */
 int16_t processWeightReading(float rawWeight) {
+  PROFILE_FUNCTION();
   // Add to moving average buffer
   weightBuffer[bufferIndex] = rawWeight;
   bufferIndex = (bufferIndex + 1) % MOVING_AVERAGE_SIZE;
@@ -123,6 +125,61 @@ int16_t getFilteredDisplayWeight() {
   return lastDisplayedWeight;
 }
 
+// Helper to safely read from HX711 with timeout
+long read_safe() {
+    // Wait for the chip to become ready.
+    // This is a blocking check, but we'll add a timeout.
+    unsigned long start = millis();
+    while (!scale.is_ready()) {
+        if (millis() - start > 100) { // 100ms timeout for readiness
+            // Serial.println("[SCALE_DEBUG] Timeout waiting for scale ready");
+            return 0;
+        }
+        yield();
+    }
+
+    // Now perform the read.
+    // We cannot easily use the library's read() because it might block if the pin goes high unexpectedly.
+    // However, since we checked is_ready(), it should be fine unless there's a hardware glitch.
+    // To be absolutely safe, we would need to reimplement the bit-banging with timeout,
+    // but accessing private members of HX711 (PD_SCK, DOUT) requires standard library access or knowing pins.
+    // We know pins from config.
+
+    // Re-implementation of HX711::read() with timeout protection in the critical loop
+
+    unsigned long value = 0;
+    uint8_t data[3] = { 0 };
+    uint8_t filler = 0x00;
+
+    // Pulse the clock pin 24 times to read the data.
+    data[2] = shiftIn(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN, MSBFIRST);
+    data[1] = shiftIn(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN, MSBFIRST);
+    data[0] = shiftIn(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN, MSBFIRST);
+
+    // Set the channel and the gain factor for the next reading using the clock pin.
+    // usually 1 pulse for 128 gain (default)
+    for (unsigned int i = 0; i < 1; i++) {
+        digitalWrite(LOADCELL_SCK_PIN, HIGH);
+        digitalWrite(LOADCELL_SCK_PIN, LOW);
+    }
+
+    // Replicate the library's logic to construct the long value
+    // Datasheet indicates the value is returned as a two's complement 24-bit value.
+    if (data[2] & 0x80) {
+        filler = 0xFF;
+    } else {
+        filler = 0x00;
+    }
+
+    // Construct a 32-bit signed integer
+    value = ( static_cast<unsigned long>(filler) << 24
+            | static_cast<unsigned long>(data[2]) << 16
+            | static_cast<unsigned long>(data[1]) << 8
+            | static_cast<unsigned long>(data[0]) );
+
+    return static_cast<long>(value);
+}
+
 // ##### Funktionen für Waage #####
 uint8_t setAutoTare(bool autoTareValue) {
   Serial.print("[SCALE_DEBUG] Set AutoTare to ");
@@ -142,6 +199,7 @@ uint8_t setAutoTare(bool autoTareValue) {
 // Replaces standard blocking scale.tare() which loops indefinitely
 // Implements manual timeout loop to avoid relying on library implementation
 bool custom_tare(uint8_t times = 10) {
+    PROFILE_FUNCTION();
     double sum = 0;
     uint8_t successful_reads = 0;
 
@@ -154,18 +212,23 @@ bool custom_tare(uint8_t times = 10) {
                 ready = true;
                 break;
             }
-            yield();
+            // yield(); // yield() only switches to equal or higher priority tasks
+            vTaskDelay(pdMS_TO_TICKS(10)); // Allow lower priority tasks to run
         }
 
         if (ready) {
-            sum += scale.read();
+            {
+               PROFILE_SCOPE("scale.read");
+               // Use safe read instead of blocking library call
+               sum += read_safe();
+            }
             successful_reads++;
         } else {
             Serial.printf("[SCALE_DEBUG] Tare sample %d timed out\n", i);
             // If we have enough samples, we can proceed, otherwise abort
             if (i > times / 2) break; // If we got > 50% samples, good enough?
         }
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(10)); // Force context switch
     }
 
     if (successful_reads > 0) {
@@ -201,6 +264,7 @@ void scale_loop(void * parameter) {
   lastMeasurementTime = millis();
 
   for(;;) {
+    PROFILE_SCOPE("scale_loop iteration");
     unsigned long currentTime = millis();
     
     // Only measure at defined intervals to reduce noise
@@ -233,7 +297,25 @@ void scale_loop(void * parameter) {
 
         unsigned long tStart = millis();
         // Get raw weight reading
-        float rawWeight = scale.get_units();
+        float rawWeight;
+        {
+          PROFILE_SCOPE("scale.get_units");
+          // Re-implement get_units using read_safe
+          long val = read_safe();
+          // formula from HX711::get_units: (read() - offset) * scale
+          // We need access to offset and scale.
+          // HX711 library members are private.
+          // BUT: we can use get_offset() and get_scale() which are public getters.
+
+          double val_d = (double)val;
+          double offset_d = scale.get_offset();
+          double scale_d = scale.get_scale();
+
+          // Avoid division by zero
+          if (scale_d == 0) scale_d = 1;
+
+          rawWeight = (val_d - offset_d) / scale_d;
+        }
         unsigned long tDuration = millis() - tStart;
         if(tDuration > 50) Serial.printf("[PERF_DEBUG] scale.get_units() took %lu ms\n", tDuration);
         

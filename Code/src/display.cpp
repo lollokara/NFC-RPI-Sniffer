@@ -7,6 +7,7 @@
 #include "bambu.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include "debug.h"
 
 // Instantiate the ST7789 display using Hardware SPI
 ST7789 display(TFT_CS, TFT_DC, TFT_RST);
@@ -79,6 +80,7 @@ int oled_center_v(const String &text) {
 
 
 void oledShowProgressBar(const uint8_t step, const uint8_t numSteps, const char* largeText, const char* statusMessage) {
+    PROFILE_FUNCTION();
     unsigned long start = millis();
     if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
         unsigned long mutexAcquired = millis();
@@ -112,11 +114,12 @@ void oledShowProgressBar(const uint8_t step, const uint8_t numSteps, const char*
     } else {
         Serial.println("[PERF_DEBUG] oledShowProgressBar failed to acquire mutex");
     }
-    unsigned long duration = millis() - start;
-    if(duration > 10) Serial.printf("[PERF_DEBUG] oledShowProgressBar total took %lu ms\n", duration);
+    // unsigned long duration = millis() - start;
+    // if(duration > 10) Serial.printf("[PERF_DEBUG] oledShowProgressBar total took %lu ms\n", duration);
 }
 
 void oledShowWeight(uint16_t weight) {
+    PROFILE_FUNCTION();
     unsigned long start = millis();
     if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
         oledcleardata();
@@ -133,11 +136,12 @@ void oledShowWeight(uint16_t weight) {
         // updateFilamentDisplay();
         xSemaphoreGiveRecursive(displayMutex);
     }
-    unsigned long duration = millis() - start;
-    if(duration > 50) Serial.printf("[PERF_DEBUG] oledShowWeight took %lu ms\n", duration);
+    // unsigned long duration = millis() - start;
+    // if(duration > 50) Serial.printf("[PERF_DEBUG] oledShowWeight took %lu ms\n", duration);
 }
 
 void oledShowMessage(const String &message, uint8_t size) {
+    PROFILE_FUNCTION();
     unsigned long start = millis();
     if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
         oledcleardata();
@@ -157,11 +161,12 @@ void oledShowMessage(const String &message, uint8_t size) {
         display.print(message);
         xSemaphoreGiveRecursive(displayMutex);
     }
-    unsigned long duration = millis() - start;
-    if(duration > 10) Serial.printf("[PERF_DEBUG] oledShowMessage took %lu ms\n", duration);
+    // unsigned long duration = millis() - start;
+    // if(duration > 10) Serial.printf("[PERF_DEBUG] oledShowMessage took %lu ms\n", duration);
 }
 
 void oledShowTopRow() {
+    PROFILE_FUNCTION();
     if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
         oledclearline();
 
