@@ -1879,7 +1879,10 @@ bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
         yield();
         
         // Use short timeout to avoid blocking
+        unsigned long start = millis();
         bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, uidLength, SHORT_TIMEOUT);
+        unsigned long duration = millis() - start;
+        if(duration > 150) Serial.printf("[PERF_DEBUG] nfc.readPassiveTargetID took %lu ms\n", duration);
         
         if (success) {
             Serial.printf("✓ Tag detected on attempt %d with %dms timeout\n", attempt + 1, SHORT_TIMEOUT);
@@ -1968,7 +1971,11 @@ void scanRfidTask(void * parameter) {
 
           Serial.println("Continuing with full tag read after fast-path check");
 
+          unsigned long readStart = millis();
           uint16_t tagSize = readTagSize();
+          unsigned long readDuration = millis() - readStart;
+          if(readDuration > 50) Serial.printf("[PERF_DEBUG] readTagSize took %lu ms\n", readDuration);
+
           if(tagSize > 0)
           {
             // Create a buffer depending on the size of the tag
@@ -1983,6 +1990,7 @@ void scanRfidTask(void * parameter) {
             
             uint8_t numPages = readTagSize()/4;
             
+            unsigned long loopStart = millis();
             for (uint8_t i = 4; i < 4+numPages; i++) {
               
               if (!robustPageRead(i, data+(i-4) * 4))
@@ -2003,9 +2011,12 @@ void scanRfidTask(void * parameter) {
               // Reduced delay for faster reading
               vTaskDelay(pdMS_TO_TICKS(2)); // Reduced from 5ms to 2ms
             }
+            unsigned long loopDuration = millis() - loopStart;
+            if(loopDuration > 100) Serial.printf("[PERF_DEBUG] Full tag read loop took %lu ms\n", loopDuration);
             
             Serial.println("Tag reading completed, starting NDEF decode...");
             
+            unsigned long decodeStart = millis();
             if (!decodeNdefAndReturnJson(data, uidString)) 
             {
               oledShowProgressBar(1, 1, "Failure", "Unknown tag");
@@ -2015,6 +2026,8 @@ void scanRfidTask(void * parameter) {
             {
               nfcReaderState = NFC_READ_SUCCESS;
             }
+            unsigned long decodeDuration = millis() - decodeStart;
+            if(decodeDuration > 50) Serial.printf("[PERF_DEBUG] decodeNdefAndReturnJson took %lu ms\n", decodeDuration);
 
             free(data);
           }
