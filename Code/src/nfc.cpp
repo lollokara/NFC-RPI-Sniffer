@@ -32,14 +32,16 @@ struct NfcWriteParameterType {
 };
 
 volatile nfcReaderStateType nfcReaderState = NFC_IDLE;
-// 0 = nicht gelesen
-// 1 = erfolgreich gelesen
-// 2 = fehler beim Lesen
-// 3 = schreiben
-// 4 = fehler beim Schreiben
-// 5 = erfolgreich geschrieben
-// 6 = reading
-// ***** PN532
+
+// Forward declarations
+void writeJsonToTag(void *parameter);
+bool decodeNdefAndReturnJson(const byte* encodedMessage, String uidString);
+bool readCompleteJsonForFastPath();
+bool quickSpoolIdCheck(String uidString);
+uint8_t ntag2xx_WriteNDEF(const char *payload);
+bool robustPageRead(uint8_t page, uint8_t* buffer);
+uint16_t readTagSize();
+String optimizeJsonForFastPath(const char* payload);
 
 // ##### Funktionen für RFID #####
 void payloadToJson(uint8_t *data) {
@@ -101,7 +103,9 @@ bool formatNdefTag() {
     }
   
     return success;
-}uint16_t readTagSize()
+}
+
+uint16_t readTagSize()
 {
   uint8_t buffer[4];
   memset(buffer, 0, 4);
@@ -1582,6 +1586,7 @@ bool safeTagDetection(uint8_t* uid, uint8_t* uidLength) {
 void scanRfidTask(void * parameter) {
   Serial.println("RFID Task gestartet");
   for(;;) {
+    Wire.setTimeOut(20); // Force short timeout on every iteration to prevent blocking
     PROFILE_SCOPE("scanRfidTask Loop");
     // unsigned long start = millis();
     // Regular watchdog reset

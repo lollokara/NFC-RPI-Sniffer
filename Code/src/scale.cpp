@@ -19,7 +19,7 @@ int16_t weight = 0;
 #define LOW_PASS_ALPHA 0.3f            // Increased from 0.15 to 0.3 for faster tracking
 #define DISPLAY_THRESHOLD 0.3f         // Reduced from 0.5 to 0.3g for more responsive display
 #define API_THRESHOLD 1.5f             // Reduced from 2.0 to 1.5g for faster API actions
-#define MEASUREMENT_INTERVAL_MS 30     // Reduced from 50ms to 30ms for faster updates
+#define MEASUREMENT_INTERVAL_MS 100    // Increased to 100ms to reduce CPU load
 
 float weightBuffer[MOVING_AVERAGE_SIZE];
 uint8_t bufferIndex = 0;

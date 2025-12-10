@@ -58,5 +58,5 @@ uint8_t mqttTaskCore = 0;
 uint8_t mqttTaskPrio = 1;
 
 uint8_t scaleTaskCore = 0;
-uint8_t scaleTaskPrio = 1;
+uint8_t scaleTaskPrio = 0;
 // ***** Task Prios
