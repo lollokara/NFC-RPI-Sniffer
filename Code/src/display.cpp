@@ -29,6 +29,23 @@ uint16_t hexToRGB565(String hex) {
     return display.color565(r, g, b);
 }
 
+// Helper to acquire mutex with logging
+bool takeDisplayMutex(const char* caller) {
+    if (!displayMutex) return false;
+
+    // Serial.printf("[MUTEX_DEBUG] Acquiring displayMutex from %s...\n", caller);
+    unsigned long start = millis();
+    if (xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
+        unsigned long duration = millis() - start;
+        if (duration > 50) {
+            Serial.printf("[MUTEX_DEBUG] Acquired displayMutex in %lu ms from %s\n", duration, caller);
+        }
+        return true;
+    }
+    Serial.printf("[MUTEX_DEBUG] Failed to acquire displayMutex from %s\n", caller);
+    return false;
+}
+
 void setupDisplay() {
     displayMutex = xSemaphoreCreateRecursiveMutex();
 
@@ -39,7 +56,7 @@ void setupDisplay() {
     pinMode(TFT_BLK, OUTPUT);
     digitalWrite(TFT_BLK, LOW); // Pull low to enable backlight
 
-    if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
+    if (takeDisplayMutex("setupDisplay")) {
         display.begin();
         display.setRotation(3); // 1 or 3 for landscape (widescreen)
         display.fillScreen(ST7789_BLACK);
@@ -52,6 +69,16 @@ void setupDisplay() {
 }
 
 void oledclearline() {
+    // Already holding mutex from caller usually, but if called independently:
+    // This is usually called inside oledShowTopRow which takes mutex.
+    // However, if we assume recursive mutex, we can take it again.
+    // But to avoid double logging or complex dependencies, let's just do it directly if we assume caller has it,
+    // OR we protect it. `oledShowTopRow` calls `oledclearline`.
+    // If I put `takeDisplayMutex` here, it will log again.
+    // Let's use `xSemaphoreTakeRecursive` directly here to avoid noise if it's an internal helper,
+    // BUT `oledShowTopRow` is the one calling it.
+    // Actually, `oledclearline` is only called from `oledShowTopRow`.
+    // Let's protect it anyway just in case.
     if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
         // Clear top status bar area
         display.fillRect(0, 0, SCREEN_WIDTH, 16, ST7789_BLACK);
@@ -82,7 +109,7 @@ int oled_center_v(const String &text) {
 void oledShowProgressBar(const uint8_t step, const uint8_t numSteps, const char* largeText, const char* statusMessage) {
     PROFILE_FUNCTION();
     unsigned long start = millis();
-    if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
+    if (takeDisplayMutex("oledShowProgressBar")) {
         unsigned long mutexAcquired = millis();
         // Clear data area
         oledcleardata();
@@ -121,7 +148,7 @@ void oledShowProgressBar(const uint8_t step, const uint8_t numSteps, const char*
 void oledShowWeight(uint16_t weight) {
     PROFILE_FUNCTION();
     unsigned long start = millis();
-    if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
+    if (takeDisplayMutex("oledShowWeight")) {
         oledcleardata();
 
         // Show Weight on the left side, big
@@ -143,7 +170,7 @@ void oledShowWeight(uint16_t weight) {
 void oledShowMessage(const String &message, uint8_t size) {
     PROFILE_FUNCTION();
     unsigned long start = millis();
-    if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
+    if (takeDisplayMutex("oledShowMessage")) {
         oledcleardata();
         display.setTextSize(size);
         display.setTextColor(ST7789_WHITE);
@@ -167,7 +194,7 @@ void oledShowMessage(const String &message, uint8_t size) {
 
 void oledShowTopRow() {
     PROFILE_FUNCTION();
-    if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
+    if (takeDisplayMutex("oledShowTopRow")) {
         oledclearline();
 
         display.setTextSize(1);
@@ -221,7 +248,7 @@ void oledShowTopRow() {
 
 void oledShowIcon(const char* icon) {
     unsigned long start = millis();
-    if (displayMutex && xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY)) {
+    if (takeDisplayMutex("oledShowIcon")) {
         oledcleardata();
         // For now just print text as bitmaps are for SSD1306 and might need conversion/handling for 76x284
         display.setTextSize(2);

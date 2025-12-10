@@ -132,7 +132,7 @@ long read_safe() {
     unsigned long start = millis();
     while (!scale.is_ready()) {
         if (millis() - start > 100) { // 100ms timeout for readiness
-            // Serial.println("[SCALE_DEBUG] Timeout waiting for scale ready");
+             Serial.println("[SCALE_DEBUG] Timeout waiting for scale ready inside read_safe");
             return 0;
         }
         yield();
@@ -219,8 +219,11 @@ bool custom_tare(uint8_t times = 10) {
         if (ready) {
             {
                PROFILE_SCOPE("scale.read");
+               unsigned long startRead = millis();
                // Use safe read instead of blocking library call
                sum += read_safe();
+               unsigned long duration = millis() - startRead;
+               if (duration > 50) Serial.printf("[PERF_DEBUG] read_safe took %lu ms in custom_tare\n", duration);
             }
             successful_reads++;
         } else {
