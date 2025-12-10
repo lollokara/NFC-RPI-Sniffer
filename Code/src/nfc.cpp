@@ -2121,6 +2121,8 @@ void startNfc() {
     Serial.print('.'); Serial.println((versiondata >> 8) & 0xFF, DEC);                  // 
 
     nfc.SAMConfig();
+    // Explicitly set 400kHz I2C clock to improve read performance
+    Wire.setClock(400000);
 
     // Set the max number of retry attempts to read from a card
     // This prevents us from waiting forever for a card, which is
