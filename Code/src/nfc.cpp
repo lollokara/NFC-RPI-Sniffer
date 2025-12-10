@@ -2094,7 +2094,8 @@ void scanRfidTask(void * parameter) {
         vTaskDelay(200 / portTICK_PERIOD_MS);
       }
     }
-    yield();
+    // yield(); // yield is not enough on single core if priorities are mixed
+    vTaskDelay(pdMS_TO_TICKS(10)); // Force context switch to lower priority tasks
 
     unsigned long duration = millis() - start;
     if (duration > 50) {
@@ -2105,6 +2106,11 @@ void scanRfidTask(void * parameter) {
 
 void startNfc() {
   oledShowProgressBar(5, 7, DISPLAY_BOOT_TEXT, "NFC init");
+
+  // Explicitly initialize I2C pins for ESP32-C3 SuperMini
+  Wire.setPins(8, 9);
+  Wire.begin();
+
   Wire.setTimeOut(50); // Set I2C timeout to 50ms to prevent long blocking
   nfc.begin();                                           // Beginne Kommunikation mit RFID Leser
   Wire.setTimeOut(50); // Ensure timeout is set after begin as well, just in case

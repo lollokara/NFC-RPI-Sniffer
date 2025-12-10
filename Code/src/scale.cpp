@@ -154,7 +154,8 @@ bool custom_tare(uint8_t times = 10) {
                 ready = true;
                 break;
             }
-            yield();
+            // yield(); // yield() only switches to equal or higher priority tasks
+            vTaskDelay(pdMS_TO_TICKS(10)); // Allow lower priority tasks to run
         }
 
         if (ready) {
@@ -165,7 +166,7 @@ bool custom_tare(uint8_t times = 10) {
             // If we have enough samples, we can proceed, otherwise abort
             if (i > times / 2) break; // If we got > 50% samples, good enough?
         }
-        yield();
+        vTaskDelay(pdMS_TO_TICKS(10)); // Force context switch
     }
 
     if (successful_reads > 0) {
