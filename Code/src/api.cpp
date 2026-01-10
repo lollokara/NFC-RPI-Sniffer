@@ -45,6 +45,7 @@ JsonDocument fetchSingleSpoolInfo(int spoolId) {
     Serial.print("Rufe Spool-Daten von: ");
     Serial.println(spoolsUrl);
 
+    http.setTimeout(1000); // Set timeout to 1s
     http.begin(spoolsUrl);
     int httpCode = http.GET();
 
@@ -130,7 +131,7 @@ void sendToApi(void *parameter) {
     // Retry mechanism with configurable parameters
     const uint8_t MAX_RETRIES = 3;
     const uint16_t RETRY_DELAY_MS = 1000; // 1 second between retries
-    const uint16_t HTTP_TIMEOUT_MS = 10000; // 10 second HTTP timeout
+    const uint16_t HTTP_TIMEOUT_MS = 2000; // 2 second HTTP timeout
     
     bool success = false;
     int httpCode = -1;
@@ -1148,6 +1149,7 @@ bool checkSpoolmanExtraFields() {
         for (uint8_t i = 0; i < urlLength; i++) {
             Serial.println();
             Serial.println("-------- Prüfe Felder für "+checkUrls[i]+" --------");
+            http.setTimeout(1000); // Set timeout to 1s
             http.begin(checkUrls[i]);
             int httpCode = http.GET();
         

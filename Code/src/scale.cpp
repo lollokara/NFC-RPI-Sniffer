@@ -161,6 +161,7 @@ void scale_loop(void * parameter) {
     
     // Only measure at defined intervals to reduce noise
     if (currentTime - lastMeasurementTime >= MEASUREMENT_INTERVAL_MS) {
+      unsigned long scaleStart = millis();
       if (scale.is_ready()) 
       {
         // Waage manuell Taren
@@ -182,6 +183,7 @@ void scale_loop(void * parameter) {
         // Get raw weight reading
         float rawWeight = scale.get_units();
         unsigned long tDuration = millis() - tStart;
+        if(tDuration > 50) Serial.printf("[PERF_DEBUG] scale.get_units() took %lu ms\n", tDuration);
         
         // Process weight with stabilization
         int16_t stabilizedWeight = processWeightReading(rawWeight);
@@ -220,6 +222,8 @@ void scale_loop(void * parameter) {
               lastNotReadyTime = currentTime;
           }
       }
+      unsigned long scaleDuration = millis() - scaleStart;
+      if(scaleDuration > 50) Serial.printf("[PERF_DEBUG] Scale iteration took %lu ms\n", scaleDuration);
     }
     
     vTaskDelay(pdMS_TO_TICKS(10)); // Shorter delay for more responsive loop

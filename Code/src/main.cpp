@@ -132,7 +132,10 @@ void loop() {
   // Periodic spoolman health check
   if (intervalElapsed(currentMillis, lastSpoolmanHealcheckTime, SPOOLMAN_HEALTHCHECK_INTERVAL)) 
   {
+    unsigned long start = millis();
     checkSpoolmanInstance();
+    unsigned long duration = millis() - start;
+    if(duration > 50) Serial.printf("[PERF_DEBUG] checkSpoolmanInstance took %lu ms\n", duration);
   }
 
   // Wenn Bambu auto set Spool aktiv
